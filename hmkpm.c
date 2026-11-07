@@ -1,10 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
-/*
- * Copyright (c) 2026 Yervant7
- *
- * KernelPatch Module (KPM) - [HMKPM]
- */
-
 #include <asm/current.h>
 #include <common.h>
 #include <compiler.h>
@@ -25,19 +18,19 @@
 #include <uapi/asm-generic/unistd.h>
 #include <asm-generic/rwonce.h>
 
-#define HMKPM_VERSION_MAJOR	2
-#define HMKPM_VERSION_MINOR	8
-#define HMKPM_VERSION_PATCH	1
-#define HMKPM_VERSION_CODE	(((uint32_t)HMKPM_VERSION_MAJOR << 16) | \
-				 ((uint32_t)HMKPM_VERSION_MINOR << 8) | \
-				 ((uint32_t)HMKPM_VERSION_PATCH))
-#define HMKPM_VERSION_STR	"2.8.1"
+#define XPRCTL_VERSION_MAJOR	1
+#define XPRCTL_VERSION_MINOR	0
+#define XPRCTL_VERSION_PATCH	1
+#define XPRCTL_VERSION_CODE	(((uint32_t)XPRCTL_VERSION_MAJOR << 16) | \
+				 ((uint32_t)XPRCTL_VERSION_MINOR << 8) | \
+				 ((uint32_t)XPRCTL_VERSION_PATCH))
+#define XPRCTL_VERSION_STR	"1.0.1"
 
-KPM_NAME("HMKPM");
-KPM_VERSION(HMKPM_VERSION_STR);
-KPM_LICENSE("GPL v2");
-KPM_AUTHOR("Yervant7");
-KPM_DESCRIPTION("KernelPatch Module (KPM) HMKPM");
+KPM_NAME("XPRCTL");
+KPM_VERSION(XPRCTL_VERSION_STR);
+KPM_LICENSE("GPL V2");
+KPM_AUTHOR("Ribo");
+KPM_DESCRIPTION("XPRCTL - Ultimate Memory Access Provider.");
 
 static bool hook_active = true;
 static bool init_error = false;
@@ -56,11 +49,11 @@ struct inode;
 struct rw_semaphore;
 
 #define U64_MAX				((u64)~0ULL)
-#define HMKPM_TAG			"[HMKPM] "
+#define XPRCTL_TAG			"[XPCTL] "
 
-#define hmkpm_info(fmt, ...)        logki(HMKPM_TAG fmt, ##__VA_ARGS__)
-#define hmkpm_warn(fmt, ...)        logkw(HMKPM_TAG fmt, ##__VA_ARGS__)
-#define hmkpm_error(fmt, ...)       logke(HMKPM_TAG fmt, ##__VA_ARGS__)
+#define xprctl_info(fmt, ...)        logki(XPRCTL_TAG fmt, ##__VA_ARGS__)
+#define xprctl_warn(fmt, ...)        logkw(XPRCTL_TAG fmt, ##__VA_ARGS__)
+#define xprctl_error(fmt, ...)       logke(XPRCTL_TAG fmt, ##__VA_ARGS__)
 
 void *memset(void *s, int c, size_t count)
 {
@@ -84,7 +77,7 @@ static inline void make_cfi_name(char *dst, size_t dst_size, const char *name)
 	dst[i] = '\0';
 }
 
-static unsigned long hmkpm_lookup_symbol(const char *name)
+static unsigned long xprctl_lookup_symbol(const char *name)
 {
 	unsigned long addr;
 
@@ -103,18 +96,18 @@ static unsigned long hmkpm_lookup_symbol(const char *name)
 
 #define hkfunc_match(func)							\
 do {										\
-	kf_##func = (typeof(kf_##func))hmkpm_lookup_symbol(#func);		\
+	kf_##func = (typeof(kf_##func))xprctl_lookup_symbol(#func);		\
 	if (!kf_##func) {							\
-		hmkpm_error("Failed to find kfunc %s\n", #func);		\
+		xprctl_error("Failed to find kfunc %s\n", #func);		\
 		init_error = true;						\
 	}									\
 } while (0)
 
 #define hkvar_match(var)							\
 do {										\
-	kv_##var = (typeof(kv_##var))hmkpm_lookup_symbol(#var);			\
+	kv_##var = (typeof(kv_##var))xprctl_lookup_symbol(#var);			\
 	if (!kv_##var) {							\
-		hmkpm_error("Failed to find kvar %s\n", #var);			\
+		xprctl_error("Failed to find kvar %s\n", #var);			\
 		init_error = true;						\
 	}									\
 } while (0)
@@ -190,42 +183,42 @@ static void before_fsnotify(hook_fargs7_t *args, void *udata)
 }
 
 /* ========================================================================
- * Channel: getresuid, intercepted when arg0 == HMKPM_MAGIC.
+ * Channel: getresuid, intercepted when arg0 == XPRCTL_MAGIC.
  *
- *   arg0 = HMKPM_MAGIC / HMKPM_MAGIC_READ / HMKPM_MAGIC_WRITE / ...
+ *   arg0 = XPRCTL_MAGIC / XPRCTL_MAGIC_READ / XPRCTL_MAGIC_WRITE / ...
  *   arg1 = pointer to request buffer
  *   arg2 = total buffer size
  *
  * Contiguous layouts in userspace:
- *   Single: [ hmkpm_req (pid, addr, size) | data[size] ]
- *   Batch:  [ hmkpm_batch_hdr (pid, count, data_total) |
- *             hmkpm_batch_entry[count] | data[data_total] ]
+ *   Single: [ xprctl_req (pid, addr, size) | data[size] ]
+ *   Batch:  [ xprctl_batch_hdr (pid, count, data_total) |
+ *             xprctl_batch_entry[count] | data[data_total] ]
  * ======================================================================== */
 
-#define HMKPM_MAGIC			0x484D4B504DULL /* "HMKPM" */
-#define HMKPM_MAGIC_READ		(HMKPM_MAGIC + 1)
-#define HMKPM_MAGIC_WRITE		(HMKPM_MAGIC + 2)
-#define HMKPM_MAGIC_READ_BATCH		(HMKPM_MAGIC + 3)
-#define HMKPM_MAGIC_WRITE_BATCH		(HMKPM_MAGIC + 4)
-#define HMKPM_MAGIC_V2P_BATCH		(HMKPM_MAGIC + 5)
-#define HMKPM_MAGIC_SCAN_KERNEL		(HMKPM_MAGIC + 6)
-#define HMKPM_MAGIC_MAX			HMKPM_MAGIC_SCAN_KERNEL
+#define XPRCTL_MAGIC			0x58505243544CULL /* "XPRCTL" */
+#define XPRCTL_MAGIC_READ		(XPRCTL_MAGIC + 1)
+#define XPRCTL_MAGIC_WRITE		(XPRCTL_MAGIC + 2)
+#define XPRCTL_MAGIC_READ_BATCH		(XPRCTL_MAGIC + 3)
+#define XPRCTL_MAGIC_WRITE_BATCH		(XPRCTL_MAGIC + 4)
+#define XPRCTL_MAGIC_V2P_BATCH		(XPRCTL_MAGIC + 5)
+#define XPRCTL_MAGIC_SCAN_KERNEL		(XPRCTL_MAGIC + 6)
+#define XPRCTL_MAGIC_MAX			XPRCTL_MAGIC_SCAN_KERNEL
 
 /* Feature Flags */
-#define HMKPM_FEATURE_READ		(1ULL << 0)
-#define HMKPM_FEATURE_WRITE		(1ULL << 1)
-#define HMKPM_FEATURE_READ_BATCH	(1ULL << 2)
-#define HMKPM_FEATURE_WRITE_BATCH	(1ULL << 3)
-#define HMKPM_FEATURE_V2P_BATCH		(1ULL << 4)
-#define HMKPM_FEATURE_SCAN_KERNEL	(1ULL << 5)
-#define HMKPM_FEATURE_LOCKLESS		(1ULL << 6)
-#define HMKPM_ALL_FEATURES		(HMKPM_FEATURE_READ | HMKPM_FEATURE_WRITE | \
-					 HMKPM_FEATURE_READ_BATCH | HMKPM_FEATURE_WRITE_BATCH | \
-					 HMKPM_FEATURE_V2P_BATCH | HMKPM_FEATURE_SCAN_KERNEL)
+#define XPRCTL_FEATURE_READ		(1ULL << 0)
+#define XPRCTL_FEATURE_WRITE		(1ULL << 1)
+#define XPRCTL_FEATURE_READ_BATCH	(1ULL << 2)
+#define XPRCTL_FEATURE_WRITE_BATCH	(1ULL << 3)
+#define XPRCTL_FEATURE_V2P_BATCH		(1ULL << 4)
+#define XPRCTL_FEATURE_SCAN_KERNEL	(1ULL << 5)
+#define XPRCTL_FEATURE_LOCKLESS		(1ULL << 6)
+#define XPRCTL_ALL_FEATURES		(XPRCTL_FEATURE_READ | XPRCTL_FEATURE_WRITE | \
+					 XPRCTL_FEATURE_READ_BATCH | XPRCTL_FEATURE_WRITE_BATCH | \
+					 XPRCTL_FEATURE_V2P_BATCH | XPRCTL_FEATURE_SCAN_KERNEL)
 
 /* Probe & Version Information */
-struct hmkpm_version_info {
-	uint64_t magic;            /* HMKPM_MAGIC */
+struct xprctl_version_info {
+	uint64_t magic;            /* XPRCTL_MAGIC */
 	uint32_t version_code;     /* (major << 16) | (minor << 8) | patch */
 	uint16_t version_major;    /* e.g. 2 */
 	uint16_t version_minor;    /* e.g. 8 */
@@ -233,73 +226,73 @@ struct hmkpm_version_info {
 	uint8_t  is_lockless;      /* 1 if running in lockless mode, 0 otherwise */
 	uint8_t  _pad;
 	int32_t  mmap_lock_offset;  /* resolved mmap_lock/sem offset, or -1 if lockless */
-	uint64_t features;          /* Active features and flags (including HMKPM_FEATURE_LOCKLESS) */
+	uint64_t features;          /* Active features and flags (including XPRCTL_FEATURE_LOCKLESS) */
 	char version_str[16];      /* "2.8.0" */
 };
 
-#define HMKPM_BATCH_CHUNK_ENTRIES	64U
-#define HMKPM_MAX_BATCH_ENTRIES		65536U
-#define HMKPM_MAX_ENTRY_SIZE		(64ULL << 20)
-#define HMKPM_MAX_SINGLE_SIZE		(64ULL << 20)
-#define HMKPM_MAX_BATCH_TOTAL_SIZE	(128ULL << 20)
+#define XPRCTL_BATCH_CHUNK_ENTRIES	64U
+#define XPRCTL_MAX_BATCH_ENTRIES		65536U
+#define XPRCTL_MAX_ENTRY_SIZE		(64ULL << 20)
+#define XPRCTL_MAX_SINGLE_SIZE		(64ULL << 20)
+#define XPRCTL_MAX_BATCH_TOTAL_SIZE	(128ULL << 20)
 
 /* V2P definitions */
-#define HMKPM_PAGE_FLAG_PRESENT		(1U << 0)
-#define HMKPM_PAGE_FLAG_RO		(1U << 1)
-#define HMKPM_PAGE_FLAG_DIRTY		(1U << 2)
-#define HMKPM_PAGE_FLAG_BLOCK		(1U << 3)
+#define XPRCTL_PAGE_FLAG_PRESENT		(1U << 0)
+#define XPRCTL_PAGE_FLAG_RO		(1U << 1)
+#define XPRCTL_PAGE_FLAG_DIRTY		(1U << 2)
+#define XPRCTL_PAGE_FLAG_BLOCK		(1U << 3)
 
-#define HMKPM_V2P_CHUNK_ENTRIES		64U
-#define HMKPM_MAX_V2P_ENTRIES		65536U
+#define XPRCTL_V2P_CHUNK_ENTRIES		64U
+#define XPRCTL_MAX_V2P_ENTRIES		65536U
 
-struct hmkpm_v2p_hdr {
+struct xprctl_v2p_hdr {
 	int32_t pid;
 	uint32_t _pad;
 	uint64_t count;
 };
 
-struct hmkpm_v2p_entry {
+struct xprctl_v2p_entry {
 	uint64_t va;
 	uint64_t pa;
 	uint32_t flags;
 	uint32_t page_size;
 };
 
-#define HMKPM_V2P_HDR_SIZE		((uint64_t)sizeof(struct hmkpm_v2p_hdr))
-#define HMKPM_V2P_ENTRY_SIZE		((uint64_t)sizeof(struct hmkpm_v2p_entry))
+#define XPRCTL_V2P_HDR_SIZE		((uint64_t)sizeof(struct xprctl_v2p_hdr))
+#define XPRCTL_V2P_ENTRY_SIZE		((uint64_t)sizeof(struct xprctl_v2p_entry))
 
 /* Scan definitions */
-enum hmkpm_scan_type {
-	HMKPM_SCAN_TYPE_I8	= 1,
-	HMKPM_SCAN_TYPE_U8	= 2,
-	HMKPM_SCAN_TYPE_I16	= 3,
-	HMKPM_SCAN_TYPE_U16	= 4,
-	HMKPM_SCAN_TYPE_I32	= 5,
-	HMKPM_SCAN_TYPE_U32	= 6,
-	HMKPM_SCAN_TYPE_I64	= 7,
-	HMKPM_SCAN_TYPE_U64	= 8,
-	HMKPM_SCAN_TYPE_F32	= 9,
-	HMKPM_SCAN_TYPE_F64	= 10,
-	HMKPM_SCAN_TYPE_BYTES	= 11,
+enum xprctl_scan_type {
+	XPRCTL_SCAN_TYPE_I8	= 1,
+	XPRCTL_SCAN_TYPE_U8	= 2,
+	XPRCTL_SCAN_TYPE_I16	= 3,
+	XPRCTL_SCAN_TYPE_U16	= 4,
+	XPRCTL_SCAN_TYPE_I32	= 5,
+	XPRCTL_SCAN_TYPE_U32	= 6,
+	XPRCTL_SCAN_TYPE_I64	= 7,
+	XPRCTL_SCAN_TYPE_U64	= 8,
+	XPRCTL_SCAN_TYPE_F32	= 9,
+	XPRCTL_SCAN_TYPE_F64	= 10,
+	XPRCTL_SCAN_TYPE_BYTES	= 11,
 };
 
-enum hmkpm_scan_op {
-	HMKPM_SCAN_OP_EXACT	= 1,
-	HMKPM_SCAN_OP_RANGE	= 2,
-	HMKPM_SCAN_OP_MASK	= 3,
+enum xprctl_scan_op {
+	XPRCTL_SCAN_OP_EXACT	= 1,
+	XPRCTL_SCAN_OP_RANGE	= 2,
+	XPRCTL_SCAN_OP_MASK	= 3,
 };
 
-#define HMKPM_MAX_SCAN_RANGES		4096U
-#define HMKPM_MAX_PATTERN_LEN		256U
-#define HMKPM_MAX_SCAN_MATCHES		1048576U
-#define HMKPM_SCAN_MATCH_CHUNK		64U
+#define XPRCTL_MAX_SCAN_RANGES		4096U
+#define XPRCTL_MAX_PATTERN_LEN		256U
+#define XPRCTL_MAX_SCAN_MATCHES		1048576U
+#define XPRCTL_SCAN_MATCH_CHUNK		64U
 
-struct hmkpm_scan_range {
+struct xprctl_scan_range {
 	uint64_t start_va;
 	uint64_t size;
 };
 
-struct hmkpm_scan_hdr {
+struct xprctl_scan_hdr {
 	int32_t pid;
 	uint8_t type;
 	uint8_t op;
@@ -325,40 +318,40 @@ struct hmkpm_scan_hdr {
 	uint64_t matches_found;
 };
 
-#define HMKPM_SCAN_HDR_SIZE		((uint64_t)sizeof(struct hmkpm_scan_hdr))
-#define HMKPM_SCAN_RANGE_SIZE		((uint64_t)sizeof(struct hmkpm_scan_range))
+#define XPRCTL_SCAN_HDR_SIZE		((uint64_t)sizeof(struct xprctl_scan_hdr))
+#define XPRCTL_SCAN_RANGE_SIZE		((uint64_t)sizeof(struct xprctl_scan_range))
 
-struct hmkpm_batch_hdr {
+struct xprctl_batch_hdr {
 	int32_t pid;
 	uint32_t _pad;
 	uint64_t count;
 	uint64_t data_total;
 };
 
-struct hmkpm_batch_entry {
+struct xprctl_batch_entry {
 	uint64_t addr;
 	uint64_t size;
 };
 
-struct hmkpm_req {
+struct xprctl_req {
 	int32_t pid;
 	uint32_t _pad;
 	uint64_t addr;
 	uint64_t size;
 };
 
-#define HMKPM_BATCH_HDR_SIZE		((uint64_t)sizeof(struct hmkpm_batch_hdr))
-#define HMKPM_BATCH_ENTRY_SIZE		((uint64_t)sizeof(struct hmkpm_batch_entry))
-#define HMKPM_REQ_SIZE			((uint64_t)sizeof(struct hmkpm_req))
+#define XPRCTL_BATCH_HDR_SIZE		((uint64_t)sizeof(struct xprctl_batch_hdr))
+#define XPRCTL_BATCH_ENTRY_SIZE		((uint64_t)sizeof(struct xprctl_batch_entry))
+#define XPRCTL_REQ_SIZE			((uint64_t)sizeof(struct xprctl_req))
 
-static inline long hmkpm_copy_from_kernel_nofault(void *dst, const void *src, size_t size)
+static inline long xprctl_copy_from_kernel_nofault(void *dst, const void *src, size_t size)
 {
 	kfunc_call(copy_from_kernel_nofault, dst, src, size);
 	kfunc_call(probe_kernel_read, dst, src, size);
 	return -ENOSYS;
 }
 
-static inline long __maybe_unused hmkpm_copy_to_kernel_nofault(void *dst, const void *src, size_t size)
+static inline long __maybe_unused xprctl_copy_to_kernel_nofault(void *dst, const void *src, size_t size)
 {
 	kfunc_call(copy_to_kernel_nofault, dst, src, size);
 	kfunc_call(probe_kernel_write, dst, src, size);
@@ -396,16 +389,16 @@ static inline uint64_t pgt_virt_to_phys(uint64_t addr)
 static bool sw_pan_enabled = false;
 static uint64_t reserved_ttbr0_val = 0;
 
-static void hmkpm_sw_pan_init(void)
+static void xprctl_sw_pan_init(void)
 {
 	if (kp_kconfig_enabled("CONFIG_ARM64_SW_TTBR0_PAN"))
 		sw_pan_enabled = true;
 
 	/* 2. Check if reserved_ttbr0 symbol exists in kernel */
-	unsigned long sym_reserved = hmkpm_lookup_symbol("reserved_ttbr0");
+	unsigned long sym_reserved = xprctl_lookup_symbol("reserved_ttbr0");
 	if (sym_reserved) {
 		uint64_t pa = 0;
-		if (hmkpm_copy_from_kernel_nofault(&pa, (const void *)sym_reserved, sizeof(pa)) == 0 && pa) {
+		if (xprctl_copy_from_kernel_nofault(&pa, (const void *)sym_reserved, sizeof(pa)) == 0 && pa) {
 			reserved_ttbr0_val = pa;
 			sw_pan_enabled = true;
 		}
@@ -421,11 +414,11 @@ static void hmkpm_sw_pan_init(void)
 	}
 
 	if (sw_pan_enabled) {
-		hmkpm_info("SW PAN detected: reserved_ttbr0=0x%llx\n", reserved_ttbr0_val);
+		xprctl_info("SW PAN detected: reserved_ttbr0=0x%llx\n", reserved_ttbr0_val);
 	}
 }
 
-static inline uint64_t hmkpm_uaccess_enable(void)
+static inline uint64_t xprctl_uaccess_enable(void)
 {
 	uint64_t old_ttbr0 = 0;
 
@@ -437,11 +430,11 @@ static inline uint64_t hmkpm_uaccess_enable(void)
 			bool need_mmput = false;
 
 			if (task_struct_offset.active_mm_offset > 0) {
-				hmkpm_copy_from_kernel_nofault(&mm,
+				xprctl_copy_from_kernel_nofault(&mm,
 					(const void *)((uintptr_t)cur + task_struct_offset.active_mm_offset),
 					sizeof(mm));
 			} else if (task_struct_offset.mm_offset > 0) {
-				hmkpm_copy_from_kernel_nofault(&mm,
+				xprctl_copy_from_kernel_nofault(&mm,
 					(const void *)((uintptr_t)cur + task_struct_offset.mm_offset),
 					sizeof(mm));
 			} else if (kf_get_task_mm) {
@@ -451,7 +444,7 @@ static inline uint64_t hmkpm_uaccess_enable(void)
 
 			if (mm && mm_struct_offset.pgd_offset >= 0) {
 				uint64_t cur_pgd_va = 0;
-				if (hmkpm_copy_from_kernel_nofault(&cur_pgd_va,
+				if (xprctl_copy_from_kernel_nofault(&cur_pgd_va,
 					(const void *)((uintptr_t)mm + mm_struct_offset.pgd_offset),
 					sizeof(cur_pgd_va)) == 0 && cur_pgd_va) {
 					uint64_t cur_pgd_pa = pgt_virt_to_phys(cur_pgd_va);
@@ -471,7 +464,7 @@ static inline uint64_t hmkpm_uaccess_enable(void)
 	return old_ttbr0;
 }
 
-static inline void hmkpm_uaccess_disable(uint64_t old_ttbr0)
+static inline void xprctl_uaccess_disable(uint64_t old_ttbr0)
 {
 	if (unlikely(sw_pan_enabled)) {
 		if (old_ttbr0) {
@@ -482,19 +475,19 @@ static inline void hmkpm_uaccess_disable(uint64_t old_ttbr0)
 	}
 }
 
-static inline unsigned long hmkpm_copy_to_user(void __user *to, const void *from, unsigned long n)
+static inline unsigned long xprctl_copy_to_user(void __user *to, const void *from, unsigned long n)
 {
-	uint64_t flags = hmkpm_uaccess_enable();
+	uint64_t flags = xprctl_uaccess_enable();
 	unsigned long ret = kfunc(__arch_copy_to_user)(to, from, n);
-	hmkpm_uaccess_disable(flags);
+	xprctl_uaccess_disable(flags);
 	return ret;
 }
 
-static inline unsigned long hmkpm_copy_from_user(void *to, const void __user *from, unsigned long n)
+static inline unsigned long xprctl_copy_from_user(void *to, const void __user *from, unsigned long n)
 {
-	uint64_t flags = hmkpm_uaccess_enable();
+	uint64_t flags = xprctl_uaccess_enable();
 	unsigned long ret = kfunc(__arch_copy_from_user)(to, from, n);
-	hmkpm_uaccess_disable(flags);
+	xprctl_uaccess_disable(flags);
 	return ret;
 }
 
@@ -627,7 +620,7 @@ static uint64_t pgt_pgtable_to_tkpa(uint64_t pgd, uint64_t va, bool is_write)
 
 		entry_va = table_va + pxd_index * 8;
 
-		if (hmkpm_copy_from_kernel_nofault(&desc, (const void *)entry_va, sizeof(desc)) != 0)
+		if (xprctl_copy_from_kernel_nofault(&desc, (const void *)entry_va, sizeof(desc)) != 0)
 			return 0;
 
 		type = desc & 3ULL;
@@ -804,7 +797,7 @@ static uint64_t pgt_pgtable_inspect(uint64_t pgd, uint64_t va, uint32_t *out_fla
 
 		entry_va = table_va + pxd_index * 8;
 
-		if (hmkpm_copy_from_kernel_nofault(&desc, (const void *)entry_va, sizeof(desc)) != 0)
+		if (xprctl_copy_from_kernel_nofault(&desc, (const void *)entry_va, sizeof(desc)) != 0)
 			return 0;
 
 		type = desc & 3ULL;
@@ -814,16 +807,16 @@ static uint64_t pgt_pgtable_inspect(uint64_t pgd, uint64_t va, uint32_t *out_fla
 
 		if (lv == 3) {
 			uint64_t base;
-			uint32_t flags = HMKPM_PAGE_FLAG_PRESENT;
+			uint32_t flags = XPRCTL_PAGE_FLAG_PRESENT;
 
 			if (type != 3ULL)
 				return 0;
 
 			if ((desc & (1ULL << 7)) && !(desc & (1ULL << 51)))
-				flags |= HMKPM_PAGE_FLAG_RO;
+				flags |= XPRCTL_PAGE_FLAG_RO;
 
 			if (desc & ((1ULL << 55) | (1ULL << 51)))
-				flags |= HMKPM_PAGE_FLAG_DIRTY;
+				flags |= XPRCTL_PAGE_FLAG_DIRTY;
 
 			base = pgt_desc_to_phys(desc);
 
@@ -846,16 +839,16 @@ static uint64_t pgt_pgtable_inspect(uint64_t pgd, uint64_t va, uint32_t *out_fla
 			uint64_t block_size;
 			uint64_t block_mask;
 			uint64_t base;
-			uint32_t flags = HMKPM_PAGE_FLAG_PRESENT | HMKPM_PAGE_FLAG_BLOCK;
+			uint32_t flags = XPRCTL_PAGE_FLAG_PRESENT | XPRCTL_PAGE_FLAG_BLOCK;
 
 			if (!pgt_block_allowed((int)lv))
 				return 0;
 
 			if ((desc & (1ULL << 7)) && !(desc & (1ULL << 51)))
-				flags |= HMKPM_PAGE_FLAG_RO;
+				flags |= XPRCTL_PAGE_FLAG_RO;
 
 			if (desc & ((1ULL << 55) | (1ULL << 51)))
-				flags |= HMKPM_PAGE_FLAG_DIRTY;
+				flags |= XPRCTL_PAGE_FLAG_DIRTY;
 
 			block_bits = (uint64_t)(3 - lv) * pxd_bits + pgt_page_shift;
 
@@ -918,7 +911,7 @@ static int pgt_pgtable_init(void)
 	tg0 = (tcr_el1 >> 14) & 0x3ULL;
 
 	if (va0_bits > 48 || va0_bits < 36) {
-		hmkpm_error("Unsupported VA bits: %llu\n", va0_bits);
+		xprctl_error("Unsupported VA bits: %llu\n", va0_bits);
 		return -EINVAL;
 	}
 
@@ -930,7 +923,7 @@ static int pgt_pgtable_init(void)
 	} else if (tg0 == 2) {
 		pgt_page_shift = 14; /* 16KB */
 	} else {
-		hmkpm_error("Unsupported tg0: %llu\n", tg0);
+		xprctl_error("Unsupported tg0: %llu\n", tg0);
 		return -EINVAL;
 	}
 
@@ -987,7 +980,7 @@ static int pgt_pgtable_init(void)
 
 	hkvar_match(memstart_addr);
 	if (!kv_memstart_addr) {
-		hmkpm_error("Failed to resolve memstart_addr\n");
+		xprctl_error("Failed to resolve memstart_addr\n");
 		return -EFAULT;
 	}
 	pgt_phys_offset = kvar_val(memstart_addr);
@@ -1005,15 +998,15 @@ static int pgt_pgtable_init(void)
 
 	pgt_tbi0 = !!(tcr_el1 & (1ULL << 37));
 
-	hmkpm_info("Page table config: va0_bits=%llu, shift=%llu, size=0x%llx, pgd_size=0x%llx, level=%llu, tbi0=%d\n",
+	xprctl_info("Page table config: va0_bits=%llu, shift=%llu, size=0x%llx, pgd_size=0x%llx, level=%llu, tbi0=%d\n",
 		   va0_bits, pgt_page_shift, pgt_page_size, pgt_pgd_size, pgt_page_level, pgt_tbi0);
-	hmkpm_info("phys_offset=0x%llx, page_offset=0x%llx, linear_voffset=0x%llx, high_mem=0x%llx, pgd_align_mask=0x%llx\n",
+	xprctl_info("phys_offset=0x%llx, page_offset=0x%llx, linear_voffset=0x%llx, high_mem=0x%llx, pgd_align_mask=0x%llx\n",
 		   pgt_phys_offset, pgt_page_offset, pgt_linear_voffset, pgt_high_memory, pgt_pgd_align_mask);
 
 	return 0;
 }
 
-static inline int hmkpm_user_range_ok(const void __user *ptr, uint64_t len)
+static inline int xprctl_user_range_ok(const void __user *ptr, uint64_t len)
 {
 	uint64_t u;
 
@@ -1031,64 +1024,64 @@ static inline int hmkpm_user_range_ok(const void __user *ptr, uint64_t len)
 	return 1;
 }
 
-static __always_inline bool is_hmkpm_magic(uint64_t magic)
+static __always_inline bool is_xprctl_magic(uint64_t magic)
 {
-	return magic >= HMKPM_MAGIC && magic <= HMKPM_MAGIC_MAX;
+	return magic >= XPRCTL_MAGIC && magic <= XPRCTL_MAGIC_MAX;
 }
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 
-static inline bool hmkpm_is_lockless(void)
+static inline bool xprctl_is_lockless(void)
 {
 	return (mmap_lock_sem_offset < 0);
 }
 
-static inline uint64_t hmkpm_get_active_features(void)
+static inline uint64_t xprctl_get_active_features(void)
 {
-	uint64_t feat = HMKPM_FEATURE_READ | HMKPM_FEATURE_READ_BATCH |
-			HMKPM_FEATURE_V2P_BATCH | HMKPM_FEATURE_SCAN_KERNEL;
+	uint64_t feat = XPRCTL_FEATURE_READ | XPRCTL_FEATURE_READ_BATCH |
+			XPRCTL_FEATURE_V2P_BATCH | XPRCTL_FEATURE_SCAN_KERNEL;
 
-	if (!hmkpm_is_lockless()) {
-		feat |= (HMKPM_FEATURE_WRITE | HMKPM_FEATURE_WRITE_BATCH);
+	if (!xprctl_is_lockless()) {
+		feat |= (XPRCTL_FEATURE_WRITE | XPRCTL_FEATURE_WRITE_BATCH);
 	} else {
-		feat |= HMKPM_FEATURE_LOCKLESS;
+		feat |= XPRCTL_FEATURE_LOCKLESS;
 	}
 
 	return feat;
 }
 
-static inline void hmkpm_mmap_read_lock(struct mm_struct *mm)
+static inline void xprctl_mmap_read_lock(struct mm_struct *mm)
 {
-	if (mm && !hmkpm_is_lockless() && kf_down_read) {
+	if (mm && !xprctl_is_lockless() && kf_down_read) {
 		struct rw_semaphore *sem =
 			(struct rw_semaphore *)((uintptr_t)mm + mmap_lock_sem_offset);
 		kfunc(down_read)(sem);
 	}
 }
 
-static inline void hmkpm_mmap_read_unlock(struct mm_struct *mm)
+static inline void xprctl_mmap_read_unlock(struct mm_struct *mm)
 {
-	if (mm && !hmkpm_is_lockless() && kf_up_read) {
+	if (mm && !xprctl_is_lockless() && kf_up_read) {
 		struct rw_semaphore *sem =
 			(struct rw_semaphore *)((uintptr_t)mm + mmap_lock_sem_offset);
 		kfunc(up_read)(sem);
 	}
 }
 
-#define HMKPM_BOUNCE_SIZE 512U
+#define XPRCTL_BOUNCE_SIZE 512U
 
-static void hmkpm_zero_user(void __user *dst, size_t size)
+static void xprctl_zero_user(void __user *dst, size_t size)
 {
 	static const uint8_t zero_chunk[256] = {0};
 
 	if (kf___arch_clear_user) {
-		uint64_t flags = hmkpm_uaccess_enable();
+		uint64_t flags = xprctl_uaccess_enable();
 		kfunc(__arch_clear_user)(dst, size);
-		hmkpm_uaccess_disable(flags);
+		xprctl_uaccess_disable(flags);
 		return;
 	}
 
-	uint64_t flags = hmkpm_uaccess_enable();
+	uint64_t flags = xprctl_uaccess_enable();
 	while (size > 0) {
 		size_t chunk = min(size, sizeof(zero_chunk));
 
@@ -1097,10 +1090,10 @@ static void hmkpm_zero_user(void __user *dst, size_t size)
 		dst = (void __user *)((uintptr_t)dst + chunk);
 		size -= chunk;
 	}
-	hmkpm_uaccess_disable(flags);
+	xprctl_uaccess_disable(flags);
 }
 
-static inline void hmkpm_fast_copy(void *dst, const void *src, size_t n)
+static inline void xprctl_fast_copy(void *dst, const void *src, size_t n)
 {
 	uint8_t *d = (uint8_t *)dst;
 	const uint8_t *s = (const uint8_t *)src;
@@ -1128,7 +1121,7 @@ static ssize_t pgt_rw_mm(struct mm_struct *mm, uint64_t remote_va, size_t len,
 {
 	ssize_t total = 0;
 	uint64_t pgd = 0;
-	uint8_t bounce[HMKPM_BOUNCE_SIZE];
+	uint8_t bounce[XPRCTL_BOUNCE_SIZE];
 
 	if (!mm)
 		return -ESRCH;
@@ -1137,10 +1130,10 @@ static ssize_t pgt_rw_mm(struct mm_struct *mm, uint64_t remote_va, size_t len,
 		return -EINVAL;
 
 	/* In lockless mode, disallow writes to prevent Use-After-Free / corruption */
-	if (is_write && hmkpm_is_lockless())
+	if (is_write && xprctl_is_lockless())
 		return -EOPNOTSUPP;
 
-	if (hmkpm_copy_from_kernel_nofault(&pgd,
+	if (xprctl_copy_from_kernel_nofault(&pgd,
 					   (const void *)((uintptr_t)mm + mm_struct_offset.pgd_offset),
 					   sizeof(pgd)) != 0 || !pgd)
 		return -EFAULT;
@@ -1150,11 +1143,11 @@ static ssize_t pgt_rw_mm(struct mm_struct *mm, uint64_t remote_va, size_t len,
 		unsigned long page_off = remote_va & (pgt_page_size - 1);
 		size_t page_left = (size_t)(pgt_page_size - page_off);
 		size_t chunk = min(len, page_left);
-		chunk = min(chunk, (size_t)HMKPM_BOUNCE_SIZE);
+		chunk = min(chunk, (size_t)XPRCTL_BOUNCE_SIZE);
 
 		if (is_write) {
 			/* Copy from caller userspace into bounce buffer outside target lock */
-			unsigned long not_copied = hmkpm_copy_from_user(bounce, local_buf, chunk);
+			unsigned long not_copied = xprctl_copy_from_user(bounce, local_buf, chunk);
 			if (not_copied) {
 				if (not_copied == chunk) {
 					if (total > 0)
@@ -1166,11 +1159,11 @@ static ssize_t pgt_rw_mm(struct mm_struct *mm, uint64_t remote_va, size_t len,
 		}
 
 		/* Lock target mm for page table resolution and in-kernel copy */
-		hmkpm_mmap_read_lock(mm);
+		xprctl_mmap_read_lock(mm);
 
 		uint64_t tkpa = pgt_pgtable_to_tkpa(pgd, remote_va, is_write);
 		if (!tkpa) {
-			hmkpm_mmap_read_unlock(mm);
+			xprctl_mmap_read_unlock(mm);
 			if (total > 0)
 				break;
 			return -EFAULT;
@@ -1179,16 +1172,16 @@ static ssize_t pgt_rw_mm(struct mm_struct *mm, uint64_t remote_va, size_t len,
 		void *tkva = (void *)pgt_phys_to_virt(tkpa);
 
 		if (is_write) {
-			hmkpm_fast_copy(tkva, bounce, chunk);
+			xprctl_fast_copy(tkva, bounce, chunk);
 		} else {
-			hmkpm_fast_copy(bounce, tkva, chunk);
+			xprctl_fast_copy(bounce, tkva, chunk);
 		}
 
-		hmkpm_mmap_read_unlock(mm);
+		xprctl_mmap_read_unlock(mm);
 
 		if (!is_write) {
 			/* Copy from bounce buffer to caller userspace outside target lock */
-			unsigned long not_copied = hmkpm_copy_to_user(local_buf, bounce, chunk);
+			unsigned long not_copied = xprctl_copy_to_user(local_buf, bounce, chunk);
 			if (not_copied) {
 				size_t copied = chunk - not_copied;
 				total += (ssize_t)copied;
@@ -1236,37 +1229,37 @@ static ssize_t pgt_rw(pid_t pid, uint64_t remote_va, size_t len,
 	return ret;
 }
 
-static void hmkpm_handle_single(hook_fargs3_t *args, void __user *user_ptr, uint64_t total_len, uint64_t magic)
+static void xprctl_handle_single(hook_fargs3_t *args, void __user *user_ptr, uint64_t total_len, uint64_t magic)
 {
-	struct hmkpm_req req;
+	struct xprctl_req req;
 	void __user *data_ptr;
-	bool write_op = (magic == HMKPM_MAGIC_WRITE);
+	bool write_op = (magic == XPRCTL_MAGIC_WRITE);
 	ssize_t ret;
 
-	if (total_len < HMKPM_REQ_SIZE) {
+	if (total_len < XPRCTL_REQ_SIZE) {
 		args->ret = (uint64_t)(long)-EINVAL;
 		return;
 	}
 
-	if (hmkpm_copy_from_user(&req, user_ptr, HMKPM_REQ_SIZE) != 0) {
+	if (xprctl_copy_from_user(&req, user_ptr, XPRCTL_REQ_SIZE) != 0) {
 		args->ret = (uint64_t)(long)-EFAULT;
 		return;
 	}
 
 	if (req.size == 0) {
-		if (total_len != HMKPM_REQ_SIZE)
+		if (total_len != XPRCTL_REQ_SIZE)
 			args->ret = (uint64_t)(long)-EINVAL;
 		else
 			args->ret = 0;
 		return;
 	}
 
-	if ((uint64_t)req.size > HMKPM_MAX_SINGLE_SIZE) {
+	if ((uint64_t)req.size > XPRCTL_MAX_SINGLE_SIZE) {
 		args->ret = (uint64_t)(long)-E2BIG;
 		return;
 	}
 
-	if (total_len != HMKPM_REQ_SIZE + (uint64_t)req.size) {
+	if (total_len != XPRCTL_REQ_SIZE + (uint64_t)req.size) {
 		args->ret = (uint64_t)(long)-EINVAL;
 		return;
 	}
@@ -1283,7 +1276,7 @@ static void hmkpm_handle_single(hook_fargs3_t *args, void __user *user_ptr, uint
 		return;
 	}
 
-	data_ptr = (void __user *)((uint8_t __user *)user_ptr + HMKPM_REQ_SIZE);
+	data_ptr = (void __user *)((uint8_t __user *)user_ptr + XPRCTL_REQ_SIZE);
 
 	ret = pgt_rw((pid_t)req.pid, req.addr, req.size, data_ptr, write_op);
 	if (ret < 0) {
@@ -1295,11 +1288,11 @@ static void hmkpm_handle_single(hook_fargs3_t *args, void __user *user_ptr, uint
 	}
 }
 
-static void hmkpm_handle_batch(hook_fargs3_t *args, void __user *user_ptr, uint64_t total_len, uint64_t magic)
+static void xprctl_handle_batch(hook_fargs3_t *args, void __user *user_ptr, uint64_t total_len, uint64_t magic)
 {
-	bool write_op = (magic == HMKPM_MAGIC_WRITE_BATCH);
-	struct hmkpm_batch_hdr hdr;
-	struct hmkpm_batch_entry chunk[HMKPM_BATCH_CHUNK_ENTRIES];
+	bool write_op = (magic == XPRCTL_MAGIC_WRITE_BATCH);
+	struct xprctl_batch_hdr hdr;
+	struct xprctl_batch_entry chunk[XPRCTL_BATCH_CHUNK_ENTRIES];
 	uint64_t entries_bytes;
 	uint64_t entries_end;
 	uint64_t data_start;
@@ -1310,12 +1303,12 @@ static void hmkpm_handle_batch(hook_fargs3_t *args, void __user *user_ptr, uint6
 	struct task_struct *task = NULL;
 	struct mm_struct *mm = NULL;
 
-	if (total_len < HMKPM_BATCH_HDR_SIZE) {
+	if (total_len < XPRCTL_BATCH_HDR_SIZE) {
 		rc = -EINVAL;
 		goto out;
 	}
 
-	if (hmkpm_copy_from_user(&hdr, user_ptr, HMKPM_BATCH_HDR_SIZE) != 0) {
+	if (xprctl_copy_from_user(&hdr, user_ptr, XPRCTL_BATCH_HDR_SIZE) != 0) {
 		rc = -EFAULT;
 		goto out;
 	}
@@ -1327,22 +1320,22 @@ static void hmkpm_handle_batch(hook_fargs3_t *args, void __user *user_ptr, uint6
 		}
 
 		if (write_op) {
-			if (total_len != HMKPM_BATCH_HDR_SIZE)
+			if (total_len != XPRCTL_BATCH_HDR_SIZE)
 				rc = -EINVAL;
 		} else {
-			if (total_len < HMKPM_BATCH_HDR_SIZE)
+			if (total_len < XPRCTL_BATCH_HDR_SIZE)
 				rc = -EINVAL;
 		}
 
 		goto out;
 	}
 
-	if (hdr.count > HMKPM_MAX_BATCH_ENTRIES) {
+	if (hdr.count > XPRCTL_MAX_BATCH_ENTRIES) {
 		rc = -E2BIG;
 		goto out;
 	}
 
-	if (hdr.data_total > HMKPM_MAX_BATCH_TOTAL_SIZE) {
+	if (hdr.data_total > XPRCTL_MAX_BATCH_TOTAL_SIZE) {
 		rc = -E2BIG;
 		goto out;
 	}
@@ -1352,14 +1345,14 @@ static void hmkpm_handle_batch(hook_fargs3_t *args, void __user *user_ptr, uint6
 		goto out;
 	}
 
-	entries_bytes = (uint64_t)hdr.count * HMKPM_BATCH_ENTRY_SIZE;
+	entries_bytes = (uint64_t)hdr.count * XPRCTL_BATCH_ENTRY_SIZE;
 
-	if (entries_bytes > U64_MAX - HMKPM_BATCH_HDR_SIZE) {
+	if (entries_bytes > U64_MAX - XPRCTL_BATCH_HDR_SIZE) {
 		rc = -E2BIG;
 		goto out;
 	}
 
-	entries_end = HMKPM_BATCH_HDR_SIZE + entries_bytes;
+	entries_end = XPRCTL_BATCH_HDR_SIZE + entries_bytes;
 
 	if (hdr.data_total > U64_MAX - entries_end) {
 		rc = -E2BIG;
@@ -1404,22 +1397,22 @@ static void hmkpm_handle_batch(hook_fargs3_t *args, void __user *user_ptr, uint6
 		void __user *entry_src;
 		uint32_t i;
 
-		if (chunk_count > HMKPM_BATCH_CHUNK_ENTRIES)
-			chunk_count = HMKPM_BATCH_CHUNK_ENTRIES;
+		if (chunk_count > XPRCTL_BATCH_CHUNK_ENTRIES)
+			chunk_count = XPRCTL_BATCH_CHUNK_ENTRIES;
 
-		chunk_bytes = (uint64_t)chunk_count * HMKPM_BATCH_ENTRY_SIZE;
+		chunk_bytes = (uint64_t)chunk_count * XPRCTL_BATCH_ENTRY_SIZE;
 
 		entry_src = (void __user *)((uint8_t __user *)user_ptr +
-					    HMKPM_BATCH_HDR_SIZE +
-					    (uint64_t)done * HMKPM_BATCH_ENTRY_SIZE);
+					    XPRCTL_BATCH_HDR_SIZE +
+					    (uint64_t)done * XPRCTL_BATCH_ENTRY_SIZE);
 
-		if (hmkpm_copy_from_user((void *)chunk, entry_src, chunk_bytes) != 0) {
+		if (xprctl_copy_from_user((void *)chunk, entry_src, chunk_bytes) != 0) {
 			rc = -EFAULT;
 			goto out_mm;
 		}
 
 		for (i = 0; i < chunk_count; ++i) {
-			struct hmkpm_batch_entry *e = &chunk[i];
+			struct xprctl_batch_entry *e = &chunk[i];
 			uint64_t req_size = e->size;
 			void __user *data_ptr;
 			ssize_t ret;
@@ -1427,7 +1420,7 @@ static void hmkpm_handle_batch(hook_fargs3_t *args, void __user *user_ptr, uint6
 			if (req_size == 0)
 				continue;
 
-			if (req_size > HMKPM_MAX_ENTRY_SIZE) {
+			if (req_size > XPRCTL_MAX_ENTRY_SIZE) {
 				rc = -E2BIG;
 				goto out_mm;
 			}
@@ -1442,7 +1435,7 @@ static void hmkpm_handle_batch(hook_fargs3_t *args, void __user *user_ptr, uint6
 			if (e->addr > U64_MAX - req_size) {
 				e->size = 0;
 				if (!write_op)
-					hmkpm_zero_user((void __user *)((uint8_t __user *)user_ptr +
+					xprctl_zero_user((void __user *)((uint8_t __user *)user_ptr +
 									data_start + data_off),
 							req_size);
 				data_off += req_size;
@@ -1456,12 +1449,12 @@ static void hmkpm_handle_batch(hook_fargs3_t *args, void __user *user_ptr, uint6
 				/* Page walk / copy failed: mark size = 0 so userspace identifies the failed address */
 				e->size = 0;
 				if (!write_op)
-					hmkpm_zero_user(data_ptr, req_size);
+					xprctl_zero_user(data_ptr, req_size);
 			} else if ((uint64_t)ret < req_size) {
 				/* Partial copy: update to the actual amount transferred */
 				e->size = (uint64_t)ret;
 				if (!write_op)
-					hmkpm_zero_user((void __user *)((uintptr_t)data_ptr + ret),
+					xprctl_zero_user((void __user *)((uintptr_t)data_ptr + ret),
 							req_size - (uint64_t)ret);
 			} else {
 				/* Full success */
@@ -1473,7 +1466,7 @@ static void hmkpm_handle_batch(hook_fargs3_t *args, void __user *user_ptr, uint6
 		}
 
 		/* Return chunk with actual transferred sizes of each entry to userspace */
-		if (hmkpm_copy_to_user(entry_src, chunk, chunk_bytes) != 0) {
+		if (xprctl_copy_to_user(entry_src, chunk, chunk_bytes) != 0) {
 			rc = -EFAULT;
 			goto out_mm;
 		}
@@ -1496,10 +1489,10 @@ out:
 	args->ret = (uint64_t)(long)rc;
 }
 
-static void hmkpm_handle_v2p_batch(hook_fargs3_t *args, void __user *user_ptr, uint64_t total_len)
+static void xprctl_handle_v2p_batch(hook_fargs3_t *args, void __user *user_ptr, uint64_t total_len)
 {
-	struct hmkpm_v2p_hdr hdr;
-	struct hmkpm_v2p_entry chunk[HMKPM_V2P_CHUNK_ENTRIES];
+	struct xprctl_v2p_hdr hdr;
+	struct xprctl_v2p_entry chunk[XPRCTL_V2P_CHUNK_ENTRIES];
 	uint64_t entries_bytes;
 	uint64_t total_req_bytes;
 	uint32_t done = 0;
@@ -1508,12 +1501,12 @@ static void hmkpm_handle_v2p_batch(hook_fargs3_t *args, void __user *user_ptr, u
 	struct mm_struct *mm = NULL;
 	uint64_t pgd = 0;
 
-	if (total_len < HMKPM_V2P_HDR_SIZE) {
+	if (total_len < XPRCTL_V2P_HDR_SIZE) {
 		rc = -EINVAL;
 		goto out;
 	}
 
-	if (hmkpm_copy_from_user(&hdr, user_ptr, HMKPM_V2P_HDR_SIZE) != 0) {
+	if (xprctl_copy_from_user(&hdr, user_ptr, XPRCTL_V2P_HDR_SIZE) != 0) {
 		rc = -EFAULT;
 		goto out;
 	}
@@ -1523,7 +1516,7 @@ static void hmkpm_handle_v2p_batch(hook_fargs3_t *args, void __user *user_ptr, u
 		goto out;
 	}
 
-	if (hdr.count > HMKPM_MAX_V2P_ENTRIES) {
+	if (hdr.count > XPRCTL_MAX_V2P_ENTRIES) {
 		rc = -E2BIG;
 		goto out;
 	}
@@ -1533,13 +1526,13 @@ static void hmkpm_handle_v2p_batch(hook_fargs3_t *args, void __user *user_ptr, u
 		goto out;
 	}
 
-	entries_bytes = (uint64_t)hdr.count * HMKPM_V2P_ENTRY_SIZE;
-	if (entries_bytes > U64_MAX - HMKPM_V2P_HDR_SIZE) {
+	entries_bytes = (uint64_t)hdr.count * XPRCTL_V2P_ENTRY_SIZE;
+	if (entries_bytes > U64_MAX - XPRCTL_V2P_HDR_SIZE) {
 		rc = -E2BIG;
 		goto out;
 	}
 
-	total_req_bytes = HMKPM_V2P_HDR_SIZE + entries_bytes;
+	total_req_bytes = XPRCTL_V2P_HDR_SIZE + entries_bytes;
 	if (total_len < total_req_bytes) {
 		rc = -EINVAL;
 		goto out;
@@ -1566,7 +1559,7 @@ static void hmkpm_handle_v2p_batch(hook_fargs3_t *args, void __user *user_ptr, u
 		goto out_mm;
 	}
 
-	if (hmkpm_copy_from_kernel_nofault(&pgd,
+	if (xprctl_copy_from_kernel_nofault(&pgd,
 					   (const void *)((uintptr_t)mm + mm_struct_offset.pgd_offset),
 					   sizeof(pgd)) != 0 || !pgd) {
 		rc = -EFAULT;
@@ -1579,22 +1572,22 @@ static void hmkpm_handle_v2p_batch(hook_fargs3_t *args, void __user *user_ptr, u
 		void __user *entry_ptr;
 		uint32_t i;
 
-		if (chunk_count > HMKPM_V2P_CHUNK_ENTRIES)
-			chunk_count = HMKPM_V2P_CHUNK_ENTRIES;
+		if (chunk_count > XPRCTL_V2P_CHUNK_ENTRIES)
+			chunk_count = XPRCTL_V2P_CHUNK_ENTRIES;
 
-		chunk_bytes = (uint64_t)chunk_count * HMKPM_V2P_ENTRY_SIZE;
+		chunk_bytes = (uint64_t)chunk_count * XPRCTL_V2P_ENTRY_SIZE;
 		entry_ptr = (void __user *)((uint8_t __user *)user_ptr +
-					    HMKPM_V2P_HDR_SIZE +
-					    (uint64_t)done * HMKPM_V2P_ENTRY_SIZE);
+					    XPRCTL_V2P_HDR_SIZE +
+					    (uint64_t)done * XPRCTL_V2P_ENTRY_SIZE);
 
-		if (hmkpm_copy_from_user((void *)chunk, entry_ptr, chunk_bytes) != 0) {
+		if (xprctl_copy_from_user((void *)chunk, entry_ptr, chunk_bytes) != 0) {
 			rc = -EFAULT;
 			goto out_mm;
 		}
 
-		hmkpm_mmap_read_lock(mm);
+		xprctl_mmap_read_lock(mm);
 		for (i = 0; i < chunk_count; ++i) {
-			struct hmkpm_v2p_entry *e = &chunk[i];
+			struct xprctl_v2p_entry *e = &chunk[i];
 			uint64_t va = e->va;
 			uint32_t flags = 0;
 			uint32_t page_sz = 0;
@@ -1605,9 +1598,9 @@ static void hmkpm_handle_v2p_batch(hook_fargs3_t *args, void __user *user_ptr, u
 			e->flags = flags;
 			e->page_size = page_sz;
 		}
-		hmkpm_mmap_read_unlock(mm);
+		xprctl_mmap_read_unlock(mm);
 
-		if (hmkpm_copy_to_user(entry_ptr, chunk, chunk_bytes) != 0) {
+		if (xprctl_copy_to_user(entry_ptr, chunk, chunk_bytes) != 0) {
 			rc = -EFAULT;
 			goto out_mm;
 		}
@@ -1676,133 +1669,133 @@ static inline uint64_t get_unaligned_le64(const void *p)
 	       ((uint64_t)b[4] << 32) | ((uint64_t)b[5] << 40) | ((uint64_t)b[6] << 48) | ((uint64_t)b[7] << 56);
 }
 
-static inline uint32_t hmkpm_scan_type_size(uint8_t type, uint64_t pattern_len)
+static inline uint32_t xprctl_scan_type_size(uint8_t type, uint64_t pattern_len)
 {
 	switch (type) {
-	case HMKPM_SCAN_TYPE_I8:
-	case HMKPM_SCAN_TYPE_U8:
+	case XPRCTL_SCAN_TYPE_I8:
+	case XPRCTL_SCAN_TYPE_U8:
 		return 1;
-	case HMKPM_SCAN_TYPE_I16:
-	case HMKPM_SCAN_TYPE_U16:
+	case XPRCTL_SCAN_TYPE_I16:
+	case XPRCTL_SCAN_TYPE_U16:
 		return 2;
-	case HMKPM_SCAN_TYPE_I32:
-	case HMKPM_SCAN_TYPE_U32:
-	case HMKPM_SCAN_TYPE_F32:
+	case XPRCTL_SCAN_TYPE_I32:
+	case XPRCTL_SCAN_TYPE_U32:
+	case XPRCTL_SCAN_TYPE_F32:
 		return 4;
-	case HMKPM_SCAN_TYPE_I64:
-	case HMKPM_SCAN_TYPE_U64:
-	case HMKPM_SCAN_TYPE_F64:
+	case XPRCTL_SCAN_TYPE_I64:
+	case XPRCTL_SCAN_TYPE_U64:
+	case XPRCTL_SCAN_TYPE_F64:
 		return 8;
-	case HMKPM_SCAN_TYPE_BYTES:
+	case XPRCTL_SCAN_TYPE_BYTES:
 		return (uint32_t)pattern_len;
 	default:
 		return 0;
 	}
 }
 
-static inline bool hmkpm_check_match(const void *ptr, const struct hmkpm_scan_hdr *hdr,
+static inline bool xprctl_check_match(const void *ptr, const struct xprctl_scan_hdr *hdr,
 				     const uint8_t *pat, const uint8_t *mask)
 {
 	switch (hdr->type) {
-	case HMKPM_SCAN_TYPE_U8: {
+	case XPRCTL_SCAN_TYPE_U8: {
 		uint8_t v = *(const uint8_t *)ptr;
-		if (hdr->op == HMKPM_SCAN_OP_EXACT)
+		if (hdr->op == XPRCTL_SCAN_OP_EXACT)
 			return (v == (uint8_t)hdr->criteria.exact.val);
-		if (hdr->op == HMKPM_SCAN_OP_RANGE)
+		if (hdr->op == XPRCTL_SCAN_OP_RANGE)
 			return (v >= (uint8_t)hdr->criteria.range_u.min &&
 				v <= (uint8_t)hdr->criteria.range_u.max);
-		if (hdr->op == HMKPM_SCAN_OP_MASK)
+		if (hdr->op == XPRCTL_SCAN_OP_MASK)
 			return ((v & (uint8_t)hdr->criteria.exact.mask) ==
 				((uint8_t)hdr->criteria.exact.val & (uint8_t)hdr->criteria.exact.mask));
 		break;
 	}
-	case HMKPM_SCAN_TYPE_I8: {
+	case XPRCTL_SCAN_TYPE_I8: {
 		int8_t v = *(const int8_t *)ptr;
-		if (hdr->op == HMKPM_SCAN_OP_EXACT)
+		if (hdr->op == XPRCTL_SCAN_OP_EXACT)
 			return (v == (int8_t)hdr->criteria.exact.val);
-		if (hdr->op == HMKPM_SCAN_OP_RANGE)
+		if (hdr->op == XPRCTL_SCAN_OP_RANGE)
 			return (v >= (int8_t)hdr->criteria.range_i.min &&
 				v <= (int8_t)hdr->criteria.range_i.max);
-		if (hdr->op == HMKPM_SCAN_OP_MASK)
+		if (hdr->op == XPRCTL_SCAN_OP_MASK)
 			return (((uint8_t)v & (uint8_t)hdr->criteria.exact.mask) ==
 				((uint8_t)hdr->criteria.exact.val & (uint8_t)hdr->criteria.exact.mask));
 		break;
 	}
-	case HMKPM_SCAN_TYPE_U16: {
+	case XPRCTL_SCAN_TYPE_U16: {
 		uint16_t v = get_unaligned_le16(ptr);
-		if (hdr->op == HMKPM_SCAN_OP_EXACT)
+		if (hdr->op == XPRCTL_SCAN_OP_EXACT)
 			return (v == (uint16_t)hdr->criteria.exact.val);
-		if (hdr->op == HMKPM_SCAN_OP_RANGE)
+		if (hdr->op == XPRCTL_SCAN_OP_RANGE)
 			return (v >= (uint16_t)hdr->criteria.range_u.min &&
 				v <= (uint16_t)hdr->criteria.range_u.max);
-		if (hdr->op == HMKPM_SCAN_OP_MASK)
+		if (hdr->op == XPRCTL_SCAN_OP_MASK)
 			return ((v & (uint16_t)hdr->criteria.exact.mask) ==
 				((uint16_t)hdr->criteria.exact.val & (uint16_t)hdr->criteria.exact.mask));
 		break;
 	}
-	case HMKPM_SCAN_TYPE_I16: {
+	case XPRCTL_SCAN_TYPE_I16: {
 		int16_t v = (int16_t)get_unaligned_le16(ptr);
-		if (hdr->op == HMKPM_SCAN_OP_EXACT)
+		if (hdr->op == XPRCTL_SCAN_OP_EXACT)
 			return (v == (int16_t)hdr->criteria.exact.val);
-		if (hdr->op == HMKPM_SCAN_OP_RANGE)
+		if (hdr->op == XPRCTL_SCAN_OP_RANGE)
 			return (v >= (int16_t)hdr->criteria.range_i.min &&
 				v <= (int16_t)hdr->criteria.range_i.max);
-		if (hdr->op == HMKPM_SCAN_OP_MASK)
+		if (hdr->op == XPRCTL_SCAN_OP_MASK)
 			return (((uint16_t)v & (uint16_t)hdr->criteria.exact.mask) ==
 				((uint16_t)hdr->criteria.exact.val & (uint16_t)hdr->criteria.exact.mask));
 		break;
 	}
-	case HMKPM_SCAN_TYPE_U32: {
+	case XPRCTL_SCAN_TYPE_U32: {
 		uint32_t v = get_unaligned_le32(ptr);
-		if (hdr->op == HMKPM_SCAN_OP_EXACT)
+		if (hdr->op == XPRCTL_SCAN_OP_EXACT)
 			return (v == (uint32_t)hdr->criteria.exact.val);
-		if (hdr->op == HMKPM_SCAN_OP_RANGE)
+		if (hdr->op == XPRCTL_SCAN_OP_RANGE)
 			return (v >= (uint32_t)hdr->criteria.range_u.min &&
 				v <= (uint32_t)hdr->criteria.range_u.max);
-		if (hdr->op == HMKPM_SCAN_OP_MASK)
+		if (hdr->op == XPRCTL_SCAN_OP_MASK)
 			return ((v & (uint32_t)hdr->criteria.exact.mask) ==
 				((uint32_t)hdr->criteria.exact.val & (uint32_t)hdr->criteria.exact.mask));
 		break;
 	}
-	case HMKPM_SCAN_TYPE_I32: {
+	case XPRCTL_SCAN_TYPE_I32: {
 		int32_t v = (int32_t)get_unaligned_le32(ptr);
-		if (hdr->op == HMKPM_SCAN_OP_EXACT)
+		if (hdr->op == XPRCTL_SCAN_OP_EXACT)
 			return (v == (int32_t)hdr->criteria.exact.val);
-		if (hdr->op == HMKPM_SCAN_OP_RANGE)
+		if (hdr->op == XPRCTL_SCAN_OP_RANGE)
 			return (v >= (int32_t)hdr->criteria.range_i.min &&
 				v <= (int32_t)hdr->criteria.range_i.max);
-		if (hdr->op == HMKPM_SCAN_OP_MASK)
+		if (hdr->op == XPRCTL_SCAN_OP_MASK)
 			return (((uint32_t)v & (uint32_t)hdr->criteria.exact.mask) ==
 				((uint32_t)hdr->criteria.exact.val & (uint32_t)hdr->criteria.exact.mask));
 		break;
 	}
-	case HMKPM_SCAN_TYPE_U64: {
+	case XPRCTL_SCAN_TYPE_U64: {
 		uint64_t v = get_unaligned_le64(ptr);
-		if (hdr->op == HMKPM_SCAN_OP_EXACT)
+		if (hdr->op == XPRCTL_SCAN_OP_EXACT)
 			return (v == hdr->criteria.exact.val);
-		if (hdr->op == HMKPM_SCAN_OP_RANGE)
+		if (hdr->op == XPRCTL_SCAN_OP_RANGE)
 			return (v >= hdr->criteria.range_u.min &&
 				v <= hdr->criteria.range_u.max);
-		if (hdr->op == HMKPM_SCAN_OP_MASK)
+		if (hdr->op == XPRCTL_SCAN_OP_MASK)
 			return ((v & hdr->criteria.exact.mask) ==
 				(hdr->criteria.exact.val & hdr->criteria.exact.mask));
 		break;
 	}
-	case HMKPM_SCAN_TYPE_I64: {
+	case XPRCTL_SCAN_TYPE_I64: {
 		int64_t v = (int64_t)get_unaligned_le64(ptr);
-		if (hdr->op == HMKPM_SCAN_OP_EXACT)
+		if (hdr->op == XPRCTL_SCAN_OP_EXACT)
 			return (v == (int64_t)hdr->criteria.exact.val);
-		if (hdr->op == HMKPM_SCAN_OP_RANGE)
+		if (hdr->op == XPRCTL_SCAN_OP_RANGE)
 			return (v >= hdr->criteria.range_i.min &&
 				v <= hdr->criteria.range_i.max);
-		if (hdr->op == HMKPM_SCAN_OP_MASK)
+		if (hdr->op == XPRCTL_SCAN_OP_MASK)
 			return (((uint64_t)v & hdr->criteria.exact.mask) ==
 				(hdr->criteria.exact.val & hdr->criteria.exact.mask));
 		break;
 	}
-	case HMKPM_SCAN_TYPE_F32: {
+	case XPRCTL_SCAN_TYPE_F32: {
 		uint32_t v = get_unaligned_le32(ptr);
-		if (hdr->op == HMKPM_SCAN_OP_EXACT) {
+		if (hdr->op == XPRCTL_SCAN_OP_EXACT) {
 			uint32_t target = (uint32_t)hdr->criteria.exact.val;
 			if (v == target)
 				return true;
@@ -1811,7 +1804,7 @@ static inline bool hmkpm_check_match(const void *ptr, const struct hmkpm_scan_hd
 				return true;
 			return false;
 		}
-		if (hdr->op == HMKPM_SCAN_OP_RANGE) {
+		if (hdr->op == XPRCTL_SCAN_OP_RANGE) {
 			int32_t vo = f32_to_orderable(v);
 			int32_t mino = f32_to_orderable((uint32_t)hdr->criteria.range_u.min);
 			int32_t maxo = f32_to_orderable((uint32_t)hdr->criteria.range_u.max);
@@ -1819,9 +1812,9 @@ static inline bool hmkpm_check_match(const void *ptr, const struct hmkpm_scan_hd
 		}
 		break;
 	}
-	case HMKPM_SCAN_TYPE_F64: {
+	case XPRCTL_SCAN_TYPE_F64: {
 		uint64_t v = get_unaligned_le64(ptr);
-		if (hdr->op == HMKPM_SCAN_OP_EXACT) {
+		if (hdr->op == XPRCTL_SCAN_OP_EXACT) {
 			uint64_t target = hdr->criteria.exact.val;
 			if (v == target)
 				return true;
@@ -1830,7 +1823,7 @@ static inline bool hmkpm_check_match(const void *ptr, const struct hmkpm_scan_hd
 				return true;
 			return false;
 		}
-		if (hdr->op == HMKPM_SCAN_OP_RANGE) {
+		if (hdr->op == XPRCTL_SCAN_OP_RANGE) {
 			int64_t vo = f64_to_orderable(v);
 			int64_t mino = f64_to_orderable(hdr->criteria.range_u.min);
 			int64_t maxo = f64_to_orderable(hdr->criteria.range_u.max);
@@ -1838,17 +1831,17 @@ static inline bool hmkpm_check_match(const void *ptr, const struct hmkpm_scan_hd
 		}
 		break;
 	}
-	case HMKPM_SCAN_TYPE_BYTES: {
+	case XPRCTL_SCAN_TYPE_BYTES: {
 		const uint8_t *b = (const uint8_t *)ptr;
 		uint64_t plen = hdr->pattern_len;
-		if (hdr->op == HMKPM_SCAN_OP_EXACT) {
+		if (hdr->op == XPRCTL_SCAN_OP_EXACT) {
 			for (uint64_t i = 0; i < plen; i++) {
 				if (b[i] != pat[i])
 					return false;
 			}
 			return true;
 		}
-		if (hdr->op == HMKPM_SCAN_OP_MASK) {
+		if (hdr->op == XPRCTL_SCAN_OP_MASK) {
 			for (uint64_t i = 0; i < plen; i++) {
 				if ((b[i] & mask[i]) != (pat[i] & mask[i]))
 					return false;
@@ -1863,12 +1856,12 @@ static inline bool hmkpm_check_match(const void *ptr, const struct hmkpm_scan_hd
 	return false;
 }
 
-static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr, uint64_t total_len)
+static void xprctl_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr, uint64_t total_len)
 {
-	struct hmkpm_scan_hdr hdr;
-	uint8_t pattern_buf[HMKPM_MAX_PATTERN_LEN];
-	uint8_t mask_buf[HMKPM_MAX_PATTERN_LEN];
-	uint64_t match_chunk[HMKPM_SCAN_MATCH_CHUNK];
+	struct xprctl_scan_hdr hdr;
+	uint8_t pattern_buf[XPRCTL_MAX_PATTERN_LEN];
+	uint8_t mask_buf[XPRCTL_MAX_PATTERN_LEN];
+	uint64_t match_chunk[XPRCTL_SCAN_MATCH_CHUNK];
 	uint32_t match_chunk_count = 0;
 	uint64_t total_matches = 0;
 	uint64_t ranges_bytes;
@@ -1885,12 +1878,12 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 	uint64_t pgd = 0;
 	void __user *user_matches_ptr;
 
-	if (total_len < HMKPM_SCAN_HDR_SIZE) {
+	if (total_len < XPRCTL_SCAN_HDR_SIZE) {
 		rc = -EINVAL;
 		goto out;
 	}
 
-	if (hmkpm_copy_from_user(&hdr, user_ptr, HMKPM_SCAN_HDR_SIZE) != 0) {
+	if (xprctl_copy_from_user(&hdr, user_ptr, XPRCTL_SCAN_HDR_SIZE) != 0) {
 		rc = -EFAULT;
 		goto out;
 	}
@@ -1900,50 +1893,50 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 		goto out;
 	}
 
-	if (hdr.range_count == 0 || hdr.range_count > HMKPM_MAX_SCAN_RANGES) {
+	if (hdr.range_count == 0 || hdr.range_count > XPRCTL_MAX_SCAN_RANGES) {
 		rc = -EINVAL;
 		goto out;
 	}
 
-	if (hdr.type < HMKPM_SCAN_TYPE_I8 || hdr.type > HMKPM_SCAN_TYPE_BYTES) {
+	if (hdr.type < XPRCTL_SCAN_TYPE_I8 || hdr.type > XPRCTL_SCAN_TYPE_BYTES) {
 		rc = -EINVAL;
 		goto out;
 	}
 
-	if (hdr.op < HMKPM_SCAN_OP_EXACT || hdr.op > HMKPM_SCAN_OP_MASK) {
+	if (hdr.op < XPRCTL_SCAN_OP_EXACT || hdr.op > XPRCTL_SCAN_OP_MASK) {
 		rc = -EINVAL;
 		goto out;
 	}
 
-	if (hdr.type == HMKPM_SCAN_TYPE_BYTES && hdr.op == HMKPM_SCAN_OP_RANGE) {
+	if (hdr.type == XPRCTL_SCAN_TYPE_BYTES && hdr.op == XPRCTL_SCAN_OP_RANGE) {
 		rc = -EINVAL;
 		goto out;
 	}
 
-	if ((hdr.type == HMKPM_SCAN_TYPE_F32 || hdr.type == HMKPM_SCAN_TYPE_F64) &&
-	    hdr.op == HMKPM_SCAN_OP_MASK) {
+	if ((hdr.type == XPRCTL_SCAN_TYPE_F32 || hdr.type == XPRCTL_SCAN_TYPE_F64) &&
+	    hdr.op == XPRCTL_SCAN_OP_MASK) {
 		rc = -EINVAL;
 		goto out;
 	}
 
-	if (hdr.type == HMKPM_SCAN_TYPE_BYTES) {
-		if (hdr.pattern_len == 0 || hdr.pattern_len > HMKPM_MAX_PATTERN_LEN) {
+	if (hdr.type == XPRCTL_SCAN_TYPE_BYTES) {
+		if (hdr.pattern_len == 0 || hdr.pattern_len > XPRCTL_MAX_PATTERN_LEN) {
 			rc = -EINVAL;
 			goto out;
 		}
 		pattern_bytes = hdr.pattern_len;
-		if (hdr.op == HMKPM_SCAN_OP_MASK)
+		if (hdr.op == XPRCTL_SCAN_OP_MASK)
 			mask_bytes = hdr.pattern_len;
 	}
 
-	type_size = hmkpm_scan_type_size(hdr.type, hdr.pattern_len);
+	type_size = xprctl_scan_type_size(hdr.type, hdr.pattern_len);
 	if (type_size == 0) {
 		rc = -EINVAL;
 		goto out;
 	}
 
 	if (hdr.align == 0) {
-		align_step = (type_size <= 8 && hdr.type != HMKPM_SCAN_TYPE_BYTES) ? type_size : 1;
+		align_step = (type_size <= 8 && hdr.type != XPRCTL_SCAN_TYPE_BYTES) ? type_size : 1;
 	} else if (hdr.align == 1 || hdr.align == 2 || hdr.align == 4 || hdr.align == 8) {
 		align_step = hdr.align;
 	} else {
@@ -1951,18 +1944,18 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 		goto out;
 	}
 
-	if (hdr.max_matches > HMKPM_MAX_SCAN_MATCHES) {
+	if (hdr.max_matches > XPRCTL_MAX_SCAN_MATCHES) {
 		rc = -E2BIG;
 		goto out;
 	}
 
-	ranges_bytes = (uint64_t)hdr.range_count * HMKPM_SCAN_RANGE_SIZE;
-	if (ranges_bytes > U64_MAX - HMKPM_SCAN_HDR_SIZE) {
+	ranges_bytes = (uint64_t)hdr.range_count * XPRCTL_SCAN_RANGE_SIZE;
+	if (ranges_bytes > U64_MAX - XPRCTL_SCAN_HDR_SIZE) {
 		rc = -E2BIG;
 		goto out;
 	}
 
-	matches_start = HMKPM_SCAN_HDR_SIZE + ranges_bytes;
+	matches_start = XPRCTL_SCAN_HDR_SIZE + ranges_bytes;
 	if (pattern_bytes + mask_bytes > U64_MAX - matches_start) {
 		rc = -E2BIG;
 		goto out;
@@ -1982,16 +1975,16 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 	}
 
 	/* Copy pattern and mask if needed */
-	if (hdr.type == HMKPM_SCAN_TYPE_BYTES) {
+	if (hdr.type == XPRCTL_SCAN_TYPE_BYTES) {
 		void __user *pat_ptr = (void __user *)((uint8_t __user *)user_ptr +
-						       HMKPM_SCAN_HDR_SIZE + ranges_bytes);
-		if (hmkpm_copy_from_user(pattern_buf, pat_ptr, pattern_bytes) != 0) {
+						       XPRCTL_SCAN_HDR_SIZE + ranges_bytes);
+		if (xprctl_copy_from_user(pattern_buf, pat_ptr, pattern_bytes) != 0) {
 			rc = -EFAULT;
 			goto out;
 		}
-		if (hdr.op == HMKPM_SCAN_OP_MASK) {
+		if (hdr.op == XPRCTL_SCAN_OP_MASK) {
 			void __user *mask_ptr = (void __user *)((uint8_t __user *)pat_ptr + pattern_bytes);
-			if (hmkpm_copy_from_user(mask_buf, mask_ptr, mask_bytes) != 0) {
+			if (xprctl_copy_from_user(mask_buf, mask_ptr, mask_bytes) != 0) {
 				rc = -EFAULT;
 				goto out;
 			}
@@ -2019,7 +2012,7 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 		goto out_mm;
 	}
 
-	if (hmkpm_copy_from_kernel_nofault(&pgd,
+	if (xprctl_copy_from_kernel_nofault(&pgd,
 					   (const void *)((uintptr_t)mm + mm_struct_offset.pgd_offset),
 					   sizeof(pgd)) != 0 || !pgd) {
 		rc = -EFAULT;
@@ -2030,11 +2023,11 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 
 	/* Iterate through ranges */
 	for (uint32_t r_idx = 0; r_idx < hdr.range_count; ++r_idx) {
-		struct hmkpm_scan_range r;
+		struct xprctl_scan_range r;
 		void __user *r_ptr = (void __user *)((uint8_t __user *)user_ptr +
-						     HMKPM_SCAN_HDR_SIZE +
-						     (uint64_t)r_idx * HMKPM_SCAN_RANGE_SIZE);
-		if (hmkpm_copy_from_user(&r, r_ptr, HMKPM_SCAN_RANGE_SIZE) != 0) {
+						     XPRCTL_SCAN_HDR_SIZE +
+						     (uint64_t)r_idx * XPRCTL_SCAN_RANGE_SIZE);
+		if (xprctl_copy_from_user(&r, r_ptr, XPRCTL_SCAN_RANGE_SIZE) != 0) {
 			rc = -EFAULT;
 			goto out_mm;
 		}
@@ -2063,11 +2056,11 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 			uint64_t bytes_left_in_page = pgt_page_size - page_off;
 			uint64_t bytes_to_scan = min(bytes_left_in_page, end_va - cur_va);
 
-			hmkpm_mmap_read_lock(mm);
+			xprctl_mmap_read_lock(mm);
 			uint64_t tkpa = pgt_pgtable_to_tkpa(pgd, cur_va, false);
 
 			if (!tkpa) {
-				hmkpm_mmap_read_unlock(mm);
+				xprctl_mmap_read_unlock(mm);
 				/* Unmapped page: skip directly to next page boundary */
 				cur_va = page_base + pgt_page_size;
 				if (cur_va % align_step != 0) {
@@ -2084,19 +2077,19 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 			/* Scan fully within the current page */
 			uint64_t off = 0;
 			while (off + type_size <= bytes_to_scan) {
-				if (hmkpm_check_match(scan_base + off, &hdr, pattern_buf, mask_buf)) {
+				if (xprctl_check_match(scan_base + off, &hdr, pattern_buf, mask_buf)) {
 					uint64_t match_va = cur_va + off;
 					if (total_matches < (uint64_t)hdr.max_matches) {
 						match_chunk[match_chunk_count++] = match_va;
-						if (match_chunk_count == HMKPM_SCAN_MATCH_CHUNK) {
-							uint64_t write_idx = total_matches - HMKPM_SCAN_MATCH_CHUNK + 1;
+						if (match_chunk_count == XPRCTL_SCAN_MATCH_CHUNK) {
+							uint64_t write_idx = total_matches - XPRCTL_SCAN_MATCH_CHUNK + 1;
 							void __user *dst = (void __user *)((uint64_t __user *)user_matches_ptr + write_idx);
-							hmkpm_mmap_read_unlock(mm);
-							if (hmkpm_copy_to_user(dst, match_chunk, sizeof(match_chunk)) != 0) {
+							xprctl_mmap_read_unlock(mm);
+							if (xprctl_copy_to_user(dst, match_chunk, sizeof(match_chunk)) != 0) {
 								rc = -EFAULT;
 								goto out_mm;
 							}
-							hmkpm_mmap_read_lock(mm);
+							xprctl_mmap_read_lock(mm);
 							match_chunk_count = 0;
 						}
 					}
@@ -2112,7 +2105,7 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 
 				if (next_tkpa) {
 					const uint8_t *next_tkva = (const uint8_t *)pgt_phys_to_virt(next_tkpa);
-					uint8_t boundary_buf[HMKPM_MAX_PATTERN_LEN];
+					uint8_t boundary_buf[XPRCTL_MAX_PATTERN_LEN];
 
 					while (off < bytes_to_scan && (cur_va + off + type_size <= end_va)) {
 						uint64_t first_part = bytes_to_scan - off;
@@ -2124,19 +2117,19 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 							for (uint64_t b_i = 0; b_i < second_part; b_i++)
 								boundary_buf[first_part + b_i] = next_tkva[b_i];
 
-							if (hmkpm_check_match(boundary_buf, &hdr, pattern_buf, mask_buf)) {
+							if (xprctl_check_match(boundary_buf, &hdr, pattern_buf, mask_buf)) {
 								uint64_t match_va = cur_va + off;
 								if (total_matches < (uint64_t)hdr.max_matches) {
 									match_chunk[match_chunk_count++] = match_va;
-									if (match_chunk_count == HMKPM_SCAN_MATCH_CHUNK) {
-										uint64_t write_idx = total_matches - HMKPM_SCAN_MATCH_CHUNK + 1;
+									if (match_chunk_count == XPRCTL_SCAN_MATCH_CHUNK) {
+										uint64_t write_idx = total_matches - XPRCTL_SCAN_MATCH_CHUNK + 1;
 										void __user *dst = (void __user *)((uint64_t __user *)user_matches_ptr + write_idx);
-										hmkpm_mmap_read_unlock(mm);
-										if (hmkpm_copy_to_user(dst, match_chunk, sizeof(match_chunk)) != 0) {
+										xprctl_mmap_read_unlock(mm);
+										if (xprctl_copy_to_user(dst, match_chunk, sizeof(match_chunk)) != 0) {
 											rc = -EFAULT;
 											goto out_mm;
 										}
-										hmkpm_mmap_read_lock(mm);
+										xprctl_mmap_read_lock(mm);
 										match_chunk_count = 0;
 									}
 								}
@@ -2148,7 +2141,7 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 				}
 			}
 
-			hmkpm_mmap_read_unlock(mm);
+			xprctl_mmap_read_unlock(mm);
 
 			cur_va += bytes_to_scan;
 		}
@@ -2159,7 +2152,7 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 		uint64_t stored = min(total_matches, (uint64_t)hdr.max_matches);
 		uint64_t write_idx = stored - match_chunk_count;
 		void __user *dst = (void __user *)((uint64_t __user *)user_matches_ptr + write_idx);
-		if (hmkpm_copy_to_user(dst, match_chunk, (uint64_t)match_chunk_count * sizeof(uint64_t)) != 0) {
+		if (xprctl_copy_to_user(dst, match_chunk, (uint64_t)match_chunk_count * sizeof(uint64_t)) != 0) {
 			rc = -EFAULT;
 			goto out_mm;
 		}
@@ -2168,8 +2161,8 @@ static void hmkpm_handle_scan_kernel(hook_fargs3_t *args, void __user *user_ptr,
 
 	/* Write back total matches count to hdr.matches_found */
 	void __user *matches_found_dst = (void __user *)((uint8_t __user *)user_ptr +
-							 __builtin_offsetof(struct hmkpm_scan_hdr, matches_found));
-	if (hmkpm_copy_to_user(matches_found_dst, &total_matches, sizeof(total_matches)) != 0) {
+							 __builtin_offsetof(struct xprctl_scan_hdr, matches_found));
+	if (xprctl_copy_to_user(matches_found_dst, &total_matches, sizeof(total_matches)) != 0) {
 		rc = -EFAULT;
 		goto out_mm;
 	}
@@ -2184,14 +2177,14 @@ out:
 	args->ret = (uint64_t)(long)rc;
 }
 
-static void hmkpm_handle(hook_fargs3_t *args, void *udata)
+static void xprctl_handle(hook_fargs3_t *args, void *udata)
 {
 	void __user *user_ptr;
 	uint64_t total_len;
 	uint64_t magic = syscall_argn(args, 0);
 	uid_t uid;
 
-	if (likely(!is_hmkpm_magic(magic)))
+	if (likely(!is_xprctl_magic(magic)))
 		return;
 
 	if (!READ_ONCE(hook_active))
@@ -2203,25 +2196,25 @@ static void hmkpm_handle(hook_fargs3_t *args, void *udata)
 
 	args->skip_origin = 1;
 
-	if (magic == HMKPM_MAGIC) {
+	if (magic == XPRCTL_MAGIC) {
 		user_ptr = (void __user *)syscall_argn(args, 1);
 		total_len = syscall_argn(args, 2);
 
 		if (user_ptr && total_len > 0) {
-			if (hmkpm_user_range_ok(user_ptr, total_len)) {
-				struct hmkpm_version_info info;
+			if (xprctl_user_range_ok(user_ptr, total_len)) {
+				struct xprctl_version_info info;
 				kfunc(memset)(&info, 0, sizeof(info));
-				info.magic = HMKPM_MAGIC;
-				info.version_code = HMKPM_VERSION_CODE;
-				info.version_major = HMKPM_VERSION_MAJOR;
-				info.version_minor = HMKPM_VERSION_MINOR;
-				info.version_patch = HMKPM_VERSION_PATCH;
-				info.is_lockless = hmkpm_is_lockless() ? 1 : 0;
+				info.magic = XPRCTL_MAGIC;
+				info.version_code = XPRCTL_VERSION_CODE;
+				info.version_major = XPRCTL_VERSION_MAJOR;
+				info.version_minor = XPRCTL_VERSION_MINOR;
+				info.version_patch = XPRCTL_VERSION_PATCH;
+				info.is_lockless = xprctl_is_lockless() ? 1 : 0;
 				info._pad = 0;
 				info.mmap_lock_offset = mmap_lock_sem_offset;
-				info.features = hmkpm_get_active_features();
+				info.features = xprctl_get_active_features();
 
-				const char *vstr = HMKPM_VERSION_STR;
+				const char *vstr = XPRCTL_VERSION_STR;
 				size_t vlen = 0;
 				while (vstr[vlen] && vlen < sizeof(info.version_str) - 1) {
 					info.version_str[vlen] = vstr[vlen];
@@ -2230,10 +2223,10 @@ static void hmkpm_handle(hook_fargs3_t *args, void *udata)
 				info.version_str[vlen] = '\0';
 
 				int copy_rc = 0;
-				if (total_len >= sizeof(struct hmkpm_version_info)) {
-					copy_rc = hmkpm_copy_to_user(user_ptr, &info, sizeof(info));
+				if (total_len >= sizeof(struct xprctl_version_info)) {
+					copy_rc = xprctl_copy_to_user(user_ptr, &info, sizeof(info));
 				} else if (total_len >= sizeof(uint32_t)) {
-					copy_rc = hmkpm_copy_to_user(user_ptr, &info.version_code, sizeof(uint32_t));
+					copy_rc = xprctl_copy_to_user(user_ptr, &info.version_code, sizeof(uint32_t));
 				}
 
 				if (copy_rc != 0) {
@@ -2243,8 +2236,8 @@ static void hmkpm_handle(hook_fargs3_t *args, void *udata)
 			}
 		}
 
-		/* Return combined 64-bit value: version_code in top 24 bits, HMKPM_MAGIC in bottom 40 bits */
-		args->ret = (((uint64_t)HMKPM_VERSION_CODE << 40) | (HMKPM_MAGIC & 0xFFFFFFFFFFULL));
+		/* Return combined 64-bit value: version_code in top 24 bits, XPRCTL_MAGIC in bottom 40 bits */
+		args->ret = (((uint64_t)XPRCTL_VERSION_CODE << 40) | (XPRCTL_MAGIC & 0xFFFFFFFFFFULL));
 		return;
 	}
 
@@ -2256,28 +2249,28 @@ static void hmkpm_handle(hook_fargs3_t *args, void *udata)
 		return;
 	}
 
-	if (unlikely(!hmkpm_user_range_ok(user_ptr, total_len))) {
+	if (unlikely(!xprctl_user_range_ok(user_ptr, total_len))) {
 		args->ret = (uint64_t)(long)-EINVAL;
 		return;
 	}
 
-	if (magic == HMKPM_MAGIC_READ || magic == HMKPM_MAGIC_WRITE) {
-		hmkpm_handle_single(args, user_ptr, total_len, magic);
+	if (magic == XPRCTL_MAGIC_READ || magic == XPRCTL_MAGIC_WRITE) {
+		xprctl_handle_single(args, user_ptr, total_len, magic);
 		return;
 	}
 
-	if (magic == HMKPM_MAGIC_READ_BATCH || magic == HMKPM_MAGIC_WRITE_BATCH) {
-		hmkpm_handle_batch(args, user_ptr, total_len, magic);
+	if (magic == XPRCTL_MAGIC_READ_BATCH || magic == XPRCTL_MAGIC_WRITE_BATCH) {
+		xprctl_handle_batch(args, user_ptr, total_len, magic);
 		return;
 	}
 
-	if (magic == HMKPM_MAGIC_V2P_BATCH) {
-		hmkpm_handle_v2p_batch(args, user_ptr, total_len);
+	if (magic == XPRCTL_MAGIC_V2P_BATCH) {
+		xprctl_handle_v2p_batch(args, user_ptr, total_len);
 		return;
 	}
 
-	if (magic == HMKPM_MAGIC_SCAN_KERNEL) {
-		hmkpm_handle_scan_kernel(args, user_ptr, total_len);
+	if (magic == XPRCTL_MAGIC_SCAN_KERNEL) {
+		xprctl_handle_scan_kernel(args, user_ptr, total_len);
 		return;
 	}
 
@@ -2361,7 +2354,7 @@ static unsigned long resolve_branch_target(unsigned long target)
 			u32 insn;
 			unsigned long next;
 
-			if (hmkpm_copy_from_kernel_nofault(&insn,
+			if (xprctl_copy_from_kernel_nofault(&insn,
 							   (const void *)cursor,
 							   sizeof(insn)) != 0)
 				break;
@@ -2890,7 +2883,7 @@ static int find_offset_before_pc_reg(unsigned long start_pc,
 
 		pc = start_pc - (unsigned long)i * 4;
 
-		if (hmkpm_copy_from_kernel_nofault(&insn,
+		if (xprctl_copy_from_kernel_nofault(&insn,
 						   (const void *)pc,
 						   sizeof(insn)) != 0)
 			break;
@@ -3050,7 +3043,7 @@ static void scan_function_for_lock_offset(unsigned long func,
 		unsigned int atomic_rn = 0;
 		int j;
 
-		if (hmkpm_copy_from_kernel_nofault(&insn,
+		if (xprctl_copy_from_kernel_nofault(&insn,
 						   (const void *)pc,
 						   sizeof(insn)) != 0)
 			break;
@@ -3172,7 +3165,7 @@ static int find_mm_mmap_sem_offset(unsigned int *offset)
 
 	/* Resolve lock symbols and their canonical targets */
 	for (i = 0; i < NR_PROBE_LOCKS; i++) {
-		lock_addr[i] = hmkpm_lookup_symbol(lock_symbol_names[i]);
+		lock_addr[i] = xprctl_lookup_symbol(lock_symbol_names[i]);
 		if (!lock_addr[i])
 			continue;
 
@@ -3181,17 +3174,17 @@ static int find_mm_mmap_sem_offset(unsigned int *offset)
 	}
 
 	if (valid_locks == 0) {
-		hmkpm_error("mmap_sem probe: no lock symbols resolved\n");
+		xprctl_error("mmap_sem probe: no lock symbols resolved\n");
 		return -ENOENT;
 	}
 
 	/* Try to obtain real sizes via kallsyms_lookup_size_offset */
 	kf_kallsyms_lookup_size_offset =
 		(typeof(kf_kallsyms_lookup_size_offset))
-		hmkpm_lookup_symbol("kallsyms_lookup_size_offset");
+		xprctl_lookup_symbol("kallsyms_lookup_size_offset");
 
 	for (i = 0; i < NR_PROBE_FUNCS; i++) {
-		func_addr[i] = hmkpm_lookup_symbol(probe_func_names[i]);
+		func_addr[i] = xprctl_lookup_symbol(probe_func_names[i]);
 		if (!func_addr[i])
 			continue;
 	}
@@ -3231,7 +3224,7 @@ static int find_mm_mmap_sem_offset(unsigned int *offset)
 	}
 
 	if (valid_funcs == 0) {
-		hmkpm_error("mmap_sem probe: no candidate functions resolved\n");
+		xprctl_error("mmap_sem probe: no candidate functions resolved\n");
 		return -ENOENT;
 	}
 
@@ -3245,12 +3238,12 @@ static int find_mm_mmap_sem_offset(unsigned int *offset)
 
 	ret = pick_consensus_offset(&off, valid_funcs);
 	if (ret != 0) {
-		hmkpm_error("mmap_sem probe: failed to find consensus offset\n");
+		xprctl_error("mmap_sem probe: failed to find consensus offset\n");
 		return ret;
 	}
 
 	*offset = off;
-	hmkpm_info("mmap_sem probe: dynamically resolved offset = 0x%x (%u)\n",
+	xprctl_info("mmap_sem probe: dynamically resolved offset = 0x%x (%u)\n",
 		   off, off);
 
 	return 0;
@@ -3286,16 +3279,16 @@ static long module_init_handler(const char *args, const char *event, void *__use
 	hook_err_t err;
 
 	if (kver < VERSION(4, 0, 0) || kver >= VERSION(6, 13, 0)) {
-		hmkpm_error("Kernel version not supported\n");
+		xprctl_error("Kernel version not supported\n");
 		return -EINVAL;
 	}
 
 	if (pgt_pgtable_init() != 0) {
-		hmkpm_error("Page table initialization failed\n");
+		xprctl_error("Page table initialization failed\n");
 		return -ENOENT;
 	}
 
-	hmkpm_sw_pan_init();
+	xprctl_sw_pan_init();
 
 	static const char *const arm64_memset_aliases[] = {
         "__memset",
@@ -3310,48 +3303,48 @@ static long module_init_handler(const char *args, const char *event, void *__use
     };
 
     for (int i = 0; arm64_memset_aliases[i] != NULL; i++) {
-        kf_memset = (typeof(kf_memset))hmkpm_lookup_symbol(arm64_memset_aliases[i]);
+        kf_memset = (typeof(kf_memset))xprctl_lookup_symbol(arm64_memset_aliases[i]);
         if (kf_memset) {
-            hmkpm_info("Resolved memset via symbol: %s (at %lx)\n", arm64_memset_aliases[i], kf_memset);
+            xprctl_info("Resolved memset via symbol: %s (at %lx)\n", arm64_memset_aliases[i], kf_memset);
             break;
         }
 	}
 
 	if (!kf_memset) {
-		hmkpm_error("Failed to find kfunc memset\n");
+		xprctl_error("Failed to find kfunc memset\n");
 		init_error = true;
 	}
 
 	kf___arch_copy_to_user =
-		(typeof(kf___arch_copy_to_user))hmkpm_lookup_symbol("__arch_copy_to_user");
+		(typeof(kf___arch_copy_to_user))xprctl_lookup_symbol("__arch_copy_to_user");
 	if (!kf___arch_copy_to_user)
 		kf___arch_copy_to_user =
-			(typeof(kf___arch_copy_to_user))hmkpm_lookup_symbol("__copy_to_user");
+			(typeof(kf___arch_copy_to_user))xprctl_lookup_symbol("__copy_to_user");
 
 	if (!kf___arch_copy_to_user) {
-		hmkpm_error("Failed to find kfunc __arch_copy_to_user / __copy_to_user\n");
+		xprctl_error("Failed to find kfunc __arch_copy_to_user / __copy_to_user\n");
 		init_error = true;
 	}
 
 	kf___arch_copy_from_user =
-		(typeof(kf___arch_copy_from_user))hmkpm_lookup_symbol("__arch_copy_from_user");
+		(typeof(kf___arch_copy_from_user))xprctl_lookup_symbol("__arch_copy_from_user");
 	if (!kf___arch_copy_from_user)
 		kf___arch_copy_from_user =
-			(typeof(kf___arch_copy_from_user))hmkpm_lookup_symbol("__copy_from_user");
+			(typeof(kf___arch_copy_from_user))xprctl_lookup_symbol("__copy_from_user");
 
 	if (!kf___arch_copy_from_user) {
-		hmkpm_error("Failed to find kfunc __arch_copy_from_user / __copy_from_user\n");
+		xprctl_error("Failed to find kfunc __arch_copy_from_user / __copy_from_user\n");
 		init_error = true;
 	}
 
 	kf___arch_clear_user =
-		(typeof(kf___arch_clear_user))hmkpm_lookup_symbol("__arch_clear_user");
+		(typeof(kf___arch_clear_user))xprctl_lookup_symbol("__arch_clear_user");
 	if (!kf___arch_clear_user)
 		kf___arch_clear_user =
-			(typeof(kf___arch_clear_user))hmkpm_lookup_symbol("__clear_user");
+			(typeof(kf___arch_clear_user))xprctl_lookup_symbol("__clear_user");
 	if (!kf___arch_clear_user)
 		kf___arch_clear_user =
-			(typeof(kf___arch_clear_user))hmkpm_lookup_symbol("clear_user");
+			(typeof(kf___arch_clear_user))xprctl_lookup_symbol("clear_user");
 
 	hkfunc_match(find_task_by_vpid);
 	hkfunc_match(get_task_mm);
@@ -3360,64 +3353,64 @@ static long module_init_handler(const char *args, const char *event, void *__use
 	hkfunc_match(__rcu_read_unlock);
 
 	/* Optional lock routines (may be inlined in vendor kernels) */
-	kf_down_read = (typeof(kf_down_read))hmkpm_lookup_symbol("down_read");
+	kf_down_read = (typeof(kf_down_read))xprctl_lookup_symbol("down_read");
 	if (!kf_down_read)
-		kf_down_read = (typeof(kf_down_read))hmkpm_lookup_symbol("_down_read");
+		kf_down_read = (typeof(kf_down_read))xprctl_lookup_symbol("_down_read");
 	if (!kf_down_read)
-		kf_down_read = (typeof(kf_down_read))hmkpm_lookup_symbol("__down_read");
+		kf_down_read = (typeof(kf_down_read))xprctl_lookup_symbol("__down_read");
 
-	kf_up_read = (typeof(kf_up_read))hmkpm_lookup_symbol("up_read");
+	kf_up_read = (typeof(kf_up_read))xprctl_lookup_symbol("up_read");
 	if (!kf_up_read)
-		kf_up_read = (typeof(kf_up_read))hmkpm_lookup_symbol("_up_read");
+		kf_up_read = (typeof(kf_up_read))xprctl_lookup_symbol("_up_read");
 	if (!kf_up_read)
-		kf_up_read = (typeof(kf_up_read))hmkpm_lookup_symbol("__up_read");
+		kf_up_read = (typeof(kf_up_read))xprctl_lookup_symbol("__up_read");
 
 	kf_copy_from_kernel_nofault =
-		(typeof(kf_copy_from_kernel_nofault))hmkpm_lookup_symbol("copy_from_kernel_nofault");
+		(typeof(kf_copy_from_kernel_nofault))xprctl_lookup_symbol("copy_from_kernel_nofault");
 	if (!kf_copy_from_kernel_nofault) {
-		hmkpm_info("Failed to find kfunc copy_from_kernel_nofault, using probe_kernel_read instead\n");
+		xprctl_info("Failed to find kfunc copy_from_kernel_nofault, using probe_kernel_read instead\n");
 		hkfunc_match(probe_kernel_read);
 	}
 
 	kf_copy_to_kernel_nofault =
-		(typeof(kf_copy_to_kernel_nofault))hmkpm_lookup_symbol("copy_to_kernel_nofault");
+		(typeof(kf_copy_to_kernel_nofault))xprctl_lookup_symbol("copy_to_kernel_nofault");
 	if (!kf_copy_to_kernel_nofault) {
-		hmkpm_info("Failed to find kfunc copy_to_kernel_nofault, using probe_kernel_write instead\n");
+		xprctl_info("Failed to find kfunc copy_to_kernel_nofault, using probe_kernel_write instead\n");
 		hkfunc_match(probe_kernel_write);
 	}
 
 	mmap_lock_sem_offset = get_mm_mmap_lock_offset();
 	if (mmap_lock_sem_offset >= 0 && kf_down_read && kf_up_read) {
-		hmkpm_info("mmap lock/sem offset = %d (0x%x)\n",
+		xprctl_info("mmap lock/sem offset = %d (0x%x)\n",
 			   mmap_lock_sem_offset, mmap_lock_sem_offset);
 	} else {
-		hmkpm_warn("mmap lock/sem offset not resolved; running in lockless mode\n");
+		xprctl_warn("mmap lock/sem offset not resolved; running in lockless mode\n");
 		mmap_lock_sem_offset = -1;
 	}
 
 	if (init_error) {
-		hmkpm_error("Symbol resolution failed, aborting...\n");
+		xprctl_error("Symbol resolution failed, aborting...\n");
 		return -ENOENT;
 	}
 
 	if (kver >= VERSION(5, 10, 0)) {
-		fsnotify_addr = hmkpm_lookup_symbol("fsnotify");
+		fsnotify_addr = xprctl_lookup_symbol("fsnotify");
 		if (fsnotify_addr) {
 			err = hook_wrap7((void *)fsnotify_addr, before_fsnotify, 0, 0);
 			if (err) {
-				hmkpm_error("hook installation of fsnotify failed: %d\n", err);
+				xprctl_error("hook installation of fsnotify failed: %d\n", err);
 				fsnotify_hooked = false;
 			} else {
 				fsnotify_hooked = true;
 			}
 		} else {
-			hmkpm_info("fsnotify_addr not found, skipping fsnotify hook\n");
+			xprctl_info("fsnotify_addr not found, skipping fsnotify hook\n");
 		}
 	}
 
-	err = hook_syscalln_override(__NR_getresuid, 3, hmkpm_handle, 0, 0);
+	err = hook_syscalln_override(__NR_getresuid, 3, xprctl_handle, 0, 0);
 	if (err) {
-		hmkpm_error("install hook error: %d\n", err);
+		xprctl_error("install hook error: %d\n", err);
 		if (fsnotify_hooked && fsnotify_addr) {
 			hook_unwrap((void *)fsnotify_addr, before_fsnotify, 0);
 			fsnotify_hooked = false;
@@ -3425,7 +3418,7 @@ static long module_init_handler(const char *args, const char *event, void *__use
 		return -ENOENT;
 	}
 
-	hmkpm_info("module loaded successfully\n");
+	xprctl_info("module loaded successfully\n");
 	return 0;
 }
 
@@ -3504,7 +3497,7 @@ static long module_control_handler(const char *args, char __user *out_msg, int o
 			send_user_msg(out_msg, outlen, "toggled to enabled\n");
 		}
 	} else {
-		hmkpm_info("unknown control command: '%s'\n", cmd ? cmd : "(null)");
+		xprctl_info("unknown control command: '%s'\n", cmd ? cmd : "(null)");
 		send_user_msg(out_msg, outlen,
 			      "unknown command. Available: enable | disable | status | toggle\n");
 		ret = -EINVAL;
@@ -3519,8 +3512,8 @@ static long module_cleanup_handler(void *__user reserved)
 		hook_unwrap((void *)fsnotify_addr, before_fsnotify, 0);
 		fsnotify_hooked = false;
 	}
-	unhook_syscalln(__NR_getresuid, (void *)hmkpm_handle, 0);
-	hmkpm_info("module cleaned up\n");
+	unhook_syscalln(__NR_getresuid, (void *)xprctl_handle, 0);
+	xprctl_info("module cleaned up\n");
 	return 0;
 }
 
