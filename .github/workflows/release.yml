@@ -25,7 +25,7 @@ jobs:
       - name: Extract version from source
         id: vars
         run: |
-          VERSION=$(grep -oP '#define\s+HMKPM_VERSION_STR\s+"\K[^"]+' hmkpm.c || true)
+          VERSION=$(grep -oP '#define\s+XPRCTL_VERSION_STR\s+"\K[^"]+' hmkpm.c || true)
           if [ -z "$VERSION" ]; then
             VERSION=$(grep -oP 'KPM_VERSION\("\K[^"]+' hmkpm.c || true)
           fi
