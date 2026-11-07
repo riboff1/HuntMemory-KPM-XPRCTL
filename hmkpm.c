@@ -3474,20 +3474,33 @@ static long module_control_handler(const char *args, char __user *out_msg, int o
 	const char *cmd = kpm_skip_spaces(args);
 	long ret = 0;
 
-	if (kpm_streq(cmd, "enable") || kpm_streq(cmd, "on") ||
-	    kpm_streq(cmd, "start") || kpm_streq(cmd, "1")) {
+	if (
+		// kpm_streq(cmd, "enable") ||
+		kpm_streq(cmd, "on")
+	    // kpm_streq(cmd, "start") ||
+		// kpm_streq(cmd, "1")
+	) {
 		WRITE_ONCE(hook_active, true);
-		send_user_msg(out_msg, outlen, "enabled\n");
-	} else if (kpm_streq(cmd, "disable") || kpm_streq(cmd, "off") ||
-		   kpm_streq(cmd, "stop") || kpm_streq(cmd, "0")) {
+		send_user_msg(out_msg, outlen, "[\u2713] XPrctl driver actived\n");
+	} else if (
+		// kpm_streq(cmd, "disable") ||
+		kpm_streq(cmd, "off")
+		// kpm_streq(cmd, "stop") ||
+		// kpm_streq(cmd, "0")
+	) {
 		WRITE_ONCE(hook_active, false);
-		send_user_msg(out_msg, outlen, "disabled\n");
-	} else if (kpm_streq(cmd, "status") || kpm_streq(cmd, "state") ||
-		   kpm_streq(cmd, "get")) {
+		send_user_msg(out_msg, outlen, "[\u2713] XPrctl driver disabled\n");
+	} else if (
+		// kpm_streq(cmd, "status") ||
+		// kpm_streq(cmd, "state") ||
+		// kpm_streq(cmd, "get") ||
+		kpm_streq(cmd, "x")
+	) {
 		if (READ_ONCE(hook_active))
 			send_user_msg(out_msg, outlen, "active\n");
 		else
 			send_user_msg(out_msg, outlen, "inactive\n");
+/*
 	} else if (kpm_streq(cmd, "toggle")) {
 		if (READ_ONCE(hook_active)) {
 			WRITE_ONCE(hook_active, false);
@@ -3496,10 +3509,11 @@ static long module_control_handler(const char *args, char __user *out_msg, int o
 			WRITE_ONCE(hook_active, true);
 			send_user_msg(out_msg, outlen, "toggled to enabled\n");
 		}
+*/
 	} else {
 		xprctl_info("unknown control command: '%s'\n", cmd ? cmd : "(null)");
-		send_user_msg(out_msg, outlen,
-			      "unknown command. Available: enable | disable | status | toggle\n");
+		send_user_msg(out_msg, outlen, "Command Not Found\n");
+		// send_user_msg(out_msg, outlen, "unknown command. Available: enable | disable | status | toggle\n");
 		ret = -EINVAL;
 	}
 
